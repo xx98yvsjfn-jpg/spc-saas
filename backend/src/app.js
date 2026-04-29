@@ -18,27 +18,24 @@ const app = express();
 const _extraOrigins = (process.env.FRONTEND_URL || '')
   .split(',').map(o => o.trim()).filter(Boolean);
 
+// CORS_ALLOW_ALL=true → acepta cualquier origen (útil en fase inicial de Render)
+// Una vez funcionando, quita esa variable y configura FRONTEND_URL
+const _corsOrigin = process.env.CORS_ALLOW_ALL === 'true'
+  ? true
+  : function(origin, cb) {
+      if (!origin) return cb(null, true);
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true);
+      if (/\.ngrok(-free)?\.app$/.test(origin) || /\.ngrok\.io$/.test(origin)) return cb(null, true);
+      if (/\.vercel\.app$/.test(origin)) return cb(null, true);
+      if (/\.onrender\.com$/.test(origin)) return cb(null, true);
+      if (_extraOrigins.some(o => origin.startsWith(o))) return cb(null, true);
+      cb(new Error(`Origen no permitido por CORS: ${origin}`));
+    };
+
 app.use(cors({
-  origin(origin, cb) {
-    // Peticiones sin origin (Postman, curl, mobile)
-    if (!origin) return cb(null, true);
-
-    // Localhost en cualquier puerto
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true);
-
-    // Túneles ngrok (.ngrok-free.app, .ngrok.io, etc.)
-    if (/\.ngrok(-free)?\.app$/.test(origin) || /\.ngrok\.io$/.test(origin)) return cb(null, true);
-
-    // Despliegues de Vercel (.vercel.app y previews de PR)
-    if (/\.vercel\.app$/.test(origin)) return cb(null, true);
-
-    // Orígenes extra configurados en FRONTEND_URL
-    if (_extraOrigins.some(o => origin.startsWith(o))) return cb(null, true);
-
-    cb(new Error(`Origen no permitido por CORS: ${origin}`));
-  },
+  origin: _corsOrigin,
   credentials: true,
-  // Permite que el cliente (ngrok) envíe este header sin que CORS lo bloquee
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Authorization', 'Content-Type', 'ngrok-skip-browser-warning']
 }));
 
@@ -89,8 +86,14 @@ app.use((err, req, res, _next) => {
 // ── Inicio ────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor SPC SaaS escuchando en puerto ${PORT}`);
-  console.log(`   Entorno: ${process.env.NODE_ENV || 'development'}`);
+  console.log('=== Servidor SPC SaaS iniciado ===');
+  console.log(`  Puerto:    ${PORT}`);
+  console.log(`  Entorno:   ${process.env.NODE_ENV || 'development'}`);
+  console.log(`  CORS:      ${process.env.CORS_ALLOW_ALL === 'true' ? 'ABIERTO (todos los origenes)' : 'restringido por whitelist'}`);
+  console.log(`  DB:        ${process.env.DATABASE_URL ? 'variable configurada' : 'DATABASE_URL no definida'}`);
+  console.log(`  JWT:       ${process.env.JWT_SECRET   ? 'variable configurada' : 'JWT_SECRET no definida'}`);
+  console.log(`  Health:    http://localhost:${PORT}/health`);
+  console.log('==================================');
 });
 
 module.exports = app;

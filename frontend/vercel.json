@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REEMPLAZA-CON-TU-URL.onrender.com/api/:path*"
+      "destination": "https://spc-saas.onrender.com/api/:path*"
     }
   ]
 }
