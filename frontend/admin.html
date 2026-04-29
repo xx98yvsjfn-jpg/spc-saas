@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administración — SPC SaaS</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width:800px) { .admin-grid { grid-template-columns: 1fr; } }
+    .role-badge { padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .role-admin  { background: #eff6ff; color: #1d4ed8; }
+    .role-analyst{ background: #f0fdf4; color: #15803d; }
+    .sub-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .sub-info-item { background: #f8fafc; border-radius: var(--radius); padding: 12px 14px; border: 1px solid var(--border); }
+    .sub-info-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); }
+    .sub-info-val { font-size: 16px; font-weight: 800; margin-top: 4px; color: var(--text); }
+  </style>
+</head>
+<body class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="main-content">
+    <div class="top-bar">
+      <div class="top-bar-title" id="top-bar-title">Administración</div>
+      <div class="top-bar-right">
+        <span class="sub-badge" id="sub-status-badge">...</span>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div id="msg"></div>
+
+      <div class="admin-grid">
+        <!-- Panel de suscripción -->
+        <div>
+          <div class="section-title">Suscripción y facturación</div>
+          <div class="card" style="margin-bottom:20px">
+            <div class="card-body">
+              <div class="sub-info-grid" id="sub-info">
+                <div class="sub-info-item"><div class="sub-info-label">Estado</div><div class="sub-info-val" id="si-status">—</div></div>
+                <div class="sub-info-item"><div class="sub-info-label">Renovación</div><div class="sub-info-val" id="si-date">—</div></div>
+              </div>
+              <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+                <button class="btn btn-primary" onclick="openBillingPortal()">Gestionar facturación (Stripe)</button>
+                <button class="btn btn-secondary" onclick="startCheckout()">Activar / renovar suscripción</button>
+                <button class="btn btn-secondary" id="btn-dev-activate" onclick="activateDev()" style="display:none">
+                  Activar demo (dev)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Datos de ejemplo -->
+          <div class="section-title">Datos de demostración</div>
+          <div class="card">
+            <div class="card-body">
+              <p style="font-size:13px;color:var(--text-sec);margin-bottom:14px">
+                Carga un proceso de ejemplo con datos precargados: <strong>Llenado de Envases</strong> (LSI=495 ml, LSE=505 ml, nominal=500 ml).
+              </p>
+              <button class="btn btn-success" onclick="loadDemoData()">Cargar datos de demostración</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel de usuarios -->
+        <div>
+          <div class="section-title">Usuarios de la empresa</div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Usuarios activos</div>
+              <button class="btn btn-primary btn-sm" onclick="openInviteModal()" style="margin-left:auto">+ Invitar usuario</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Email</th>
+                    <th>Rol</th>
+                    <th>Miembro desde</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="users-tbody">
+                  <tr><td colspan="5" class="text-center" style="padding:24px;color:var(--text-muted)"><span class="spinner"></span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal invitar usuario -->
+  <div class="modal-overlay hidden" id="invite-overlay" onclick="if(event.target===this)closeInvite()">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Invitar usuario</div>
+        <button class="modal-close" onclick="closeInvite()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="invite-msg"></div>
+        <div class="form-group">
+          <label>Nombre completo</label>
+          <input type="text" id="inv-name" placeholder="Ana García">
+        </div>
+        <div class="form-group">
+          <label>Correo electrónico</label>
+          <input type="email" id="inv-email" placeholder="ana@empresa.com">
+        </div>
+        <div class="form-group">
+          <label>Contraseña temporal <span class="text-muted">(mín. 8 caracteres)</span></label>
+          <input type="password" id="inv-password" placeholder="••••••••" minlength="8">
+        </div>
+        <div class="form-group">
+          <label>Rol</label>
+          <select id="inv-role">
+            <option value="analyst">Analista</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeInvite()">Cancelar</button>
+        <button class="btn btn-primary" onclick="inviteUser()" id="btn-invite">Crear usuario</button>
+      </div>
+    </div>
+  </div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  if (!requireLogin()) { /* redirected */ }
+
+  const user = Auth.getUser();
+  if (user?.role !== 'admin') {
+    window.location.href = '/dashboard.html';
+  }
+
+  initSidebar('admin');
+  initTopBar('Administración');
+
+  // Mostrar botón dev en localhost
+  if (location.hostname === 'localhost') {
+    document.getElementById('btn-dev-activate').style.display = 'inline-flex';
+  }
+
+  async function loadPage() {
+    await Promise.all([loadSubscription(), loadUsers()]);
+  }
+
+  async function loadSubscription() {
+    try {
+      const sub = await billingApi.status();
+      const statusMap = { active: 'Activa', inactive: 'Inactiva', past_due: 'Pago vencido', canceled: 'Cancelada' };
+      document.getElementById('si-status').textContent = statusMap[sub.subscription_status] || sub.subscription_status;
+      document.getElementById('si-date').textContent   = sub.subscription_end_date
+        ? new Date(sub.subscription_end_date).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
+        : '—';
+    } catch {}
+  }
+
+  async function loadUsers() {
+    try {
+      const users = await usersApi.list();
+      const tbody  = document.getElementById('users-tbody');
+      const currentId = Auth.getUser()?.id;
+
+      if (!users.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center" style="padding:24px;color:var(--text-muted)">Sin usuarios.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = users.map(u => `
+        <tr>
+          <td><strong>${escHtml(u.name)}</strong>${u.id === currentId ? ' <span class="badge badge-blue">Tú</span>' : ''}</td>
+          <td style="font-size:12px;color:var(--text-sec)">${escHtml(u.email)}</td>
+          <td><span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-analyst'}">${u.role === 'admin' ? 'Admin' : 'Analista'}</span></td>
+          <td style="font-size:12px;color:var(--text-muted)">${new Date(u.created_at).toLocaleDateString('es-MX')}</td>
+          <td>
+            ${u.id !== currentId
+              ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${escHtml(u.name).replace(/'/g,"\\'")}')">Eliminar</button>`
+              : ''}
+          </td>
+        </tr>`).join('');
+    } catch (err) {
+      showAlert(document.getElementById('msg'), 'Error al cargar usuarios: ' + err.message, 'error');
+    }
+  }
+
+  async function deleteUser(id, name) {
+    if (!confirm(`¿Eliminar al usuario "${name}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await usersApi.delete(id);
+      await loadUsers();
+      showAlert(document.getElementById('msg'), 'Usuario eliminado.', 'success');
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+    }
+  }
+
+  function openInviteModal() {
+    document.getElementById('invite-overlay').classList.remove('hidden');
+    document.getElementById('invite-msg').innerHTML = '';
+    ['inv-name','inv-email','inv-password'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('inv-role').value = 'analyst';
+  }
+
+  function closeInvite() {
+    document.getElementById('invite-overlay').classList.add('hidden');
+  }
+
+  async function inviteUser() {
+    const msg = document.getElementById('invite-msg');
+    const btn = document.getElementById('btn-invite');
+    const payload = {
+      name:     document.getElementById('inv-name').value.trim(),
+      email:    document.getElementById('inv-email').value.trim(),
+      password: document.getElementById('inv-password').value,
+      role:     document.getElementById('inv-role').value
+    };
+
+    if (!payload.name || !payload.email || !payload.password) {
+      return showAlert(msg, 'Todos los campos son obligatorios.', 'error');
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Creando...';
+
+    try {
+      await usersApi.invite(payload);
+      closeInvite();
+      await loadUsers();
+      showAlert(document.getElementById('msg'), `Usuario "${payload.name}" creado correctamente.`, 'success');
+    } catch (err) {
+      showAlert(msg, err.message, 'error');
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = 'Crear usuario';
+    }
+  }
+
+  async function openBillingPortal() {
+    try {
+      const { url } = await billingApi.portal();
+      window.open(url, '_blank');
+    } catch (err) {
+      showAlert(document.getElementById('msg'), 'Error al abrir portal de Stripe: ' + err.message, 'error');
+    }
+  }
+
+  async function startCheckout() {
+    try {
+      const { url } = await billingApi.checkout();
+      window.location.href = url;
+    } catch (err) {
+      showAlert(document.getElementById('msg'), 'Error: ' + err.message, 'error');
+    }
+  }
+
+  async function activateDev() {
+    try {
+      await billingApi.activateDev();
+      showAlert(document.getElementById('msg'), 'Suscripción activada en modo desarrollo.', 'success');
+      await loadSubscription();
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+    }
+  }
+
+  async function loadDemoData() {
+    const msg = document.getElementById('msg');
+    try {
+      // Crear el proceso de demostración
+      const proc = await processesApi.create({
+        name:        'Llenado de Envases (Demo)',
+        description: 'Proceso de demostración — Control de volumen de llenado de botellas',
+        unit:        'ml',
+        usl:         505,
+        lsl:         495,
+        nominal:     500
+      });
+
+      // Datos de demostración realistas (media ~500.2, σ ~1.5 ml)
+      const demoValues = [
+        499.2,501.3,500.8,499.7,500.1,501.5,499.8,500.3,501.1,499.5,
+        500.7,501.2,499.3,500.9,501.4,499.6,500.4,501.0,499.9,500.5,
+        501.3,499.4,500.6,501.1,499.8,500.2,500.7,499.5,501.4,500.0,
+        500.3,499.7,501.0,500.5,499.9,501.2,500.1,499.6,500.8,501.5,
+        499.4,500.9,501.3,499.8,500.4,501.1,499.2,500.6,501.0,500.3,
+        499.7,500.8,501.4,499.5,500.2,501.3,499.9,500.7,501.1,499.3
+      ];
+
+      const items = demoValues.map((v, i) => ({
+        process_id:  proc.id,
+        value:       v,
+        subgroup_id: Math.floor(i / 5) + 1
+      }));
+
+      await measurementsApi.createBatch(items);
+      showAlert(msg, `Proceso de demostración creado con ${items.length} mediciones. <a href="/capability.html?process_id=${proc.id}">Ver análisis →</a>`, 'success');
+    } catch (err) {
+      showAlert(msg, 'Error al crear datos de demostración: ' + err.message, 'error');
+    }
+  }
+
+  loadPage();
+</script>
+</body>
+</html>

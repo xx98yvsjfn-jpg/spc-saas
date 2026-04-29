@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capacidad — SPC SaaS</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <style>
+    /* ── Spec editor ────────────────────────────────────────── */
+    .spec-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 20px; cursor: pointer; user-select: none;
+      background: #faf5ff; border-radius: var(--radius);
+    }
+    .spec-hdr.open {
+      border-radius: var(--radius) var(--radius) 0 0;
+      border-bottom: 1px solid #ddd6fe;
+    }
+    .spec-hdr-left { display: flex; align-items: center; gap: 10px; }
+    .spec-title { font-size: 14px; font-weight: 700; color: #6d28d9; }
+    .spec-summary { font-size: 12px; color: var(--text-sec); }
+    .spec-arrow { color: #a78bfa; font-size: 12px; }
+    .spec-body { padding: 18px 20px; }
+    .spec-no-specs {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; margin-bottom: 14px;
+      background: #fef3c7; border: 1px solid #fcd34d;
+      border-radius: var(--radius); font-size: 12px; color: #92400e;
+    }
+
+    /* ── Data panel ─────────────────────────────────────────── */
+    .data-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 20px; cursor: pointer; user-select: none;
+      background: #faf5ff; border-radius: var(--radius);
+    }
+    .data-hdr.open {
+      border-radius: var(--radius) var(--radius) 0 0;
+      border-bottom: 1px solid #ddd6fe;
+    }
+    .data-hdr-left { display: flex; align-items: center; gap: 10px; }
+    .data-title { font-size: 14px; font-weight: 700; color: #6d28d9; }
+    .data-count-pill {
+      padding: 2px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 600;
+      background: #ede9fe; color: #6d28d9;
+    }
+    .data-arrow { color: #a78bfa; font-size: 12px; }
+    .data-body { padding: 18px 20px; }
+
+    .input-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 800px) { .input-panel { grid-template-columns: 1fr; } }
+    .panel-sub { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+    .lbl-opt { color: var(--text-muted); font-size: 11px; }
+
+    /* ── Indicadores de capacidad ───────────────────────────── */
+    .cap-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 14px; margin-bottom: 20px;
+    }
+    @media (max-width:900px) { .cap-grid { grid-template-columns: 1fr 1fr; } }
+    .cap-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+      text-align: center; box-shadow: var(--shadow);
+    }
+    .cap-val  { font-size: 36px; font-weight: 900; line-height: 1; margin-bottom: 4px; }
+    .cap-lbl  {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .6px; color: var(--text-muted);
+    }
+    .cap-sublbl { font-size: 12px; color: var(--text-sec); margin-top: 4px; }
+
+    .chart-cap  { height: 300px; }
+    .chart-hist { height: 280px; }
+
+    .rec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width:700px) { .rec-grid { grid-template-columns: 1fr; } }
+    .rec-item { background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; font-size: 13px; }
+    .rec-item.good { border-left: 3px solid var(--success); }
+    .rec-item.warn { border-left: 3px solid var(--warning); }
+    .rec-item.bad  { border-left: 3px solid var(--danger);  }
+
+    /* ── Pruebas estadísticas ────────────────────────────────── */
+    .tests-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 16px; }
+    .test-card  { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; border-left:4px solid var(--border); }
+    .test-card.pass { border-left-color: var(--success); }
+    .test-card.fail { border-left-color: var(--danger);  }
+    .test-card.na   { background: #f8fafc; }
+    .test-name  { font-size:13px; font-weight:700; color:var(--text); margin-bottom:2px; }
+    .test-h0    { font-size:11px; color:var(--text-muted); margin-bottom:12px; }
+    .test-stats { display:flex; gap:20px; margin-bottom:10px; align-items:flex-end; }
+    .test-stat  { display:flex; flex-direction:column; }
+    .test-stat-lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:var(--text-muted); }
+    .test-stat-val { font-size:22px; font-weight:900; line-height:1.1; }
+    .test-result-badge { margin-left:auto; padding:4px 12px; border-radius:99px; font-size:11px; font-weight:700; white-space:nowrap; align-self:center; }
+    .test-result-badge.pass { background:var(--success-bg); color:var(--success); }
+    .test-result-badge.fail { background:var(--danger-bg);  color:var(--danger);  }
+    .test-interp { font-size:12px; color:var(--text-sec); line-height:1.5; }
+    .test-na-msg { font-size:12px; color:var(--text-muted); padding:8px 0; }
+    .alpha-note  { font-size:11px; color:var(--text-muted); font-style:italic; }
+
+    .centering-banner {
+      display:flex; align-items:center; gap:10px;
+      padding:9px 14px; border-radius:var(--radius);
+      font-size:13px; font-weight:600; margin-bottom:10px;
+    }
+    .centering-banner.centered { background:var(--success-bg); color:var(--success); }
+    .centering-banner.slight   { background:#fef3c7; color:#92400e; }
+    .centering-banner.offset   { background:var(--danger-bg);  color:var(--danger);  }
+  </style>
+</head>
+<body class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="main-content">
+    <div class="top-bar">
+      <div>
+        <div class="top-bar-title" id="top-bar-title">Análisis de Capacidad</div>
+        <span class="top-bar-breadcrumb" id="process-crumb"></span>
+      </div>
+      <div class="top-bar-right">
+        <span class="sub-badge" id="sub-status-badge">...</span>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ── Selector de proceso ────────────────────────────── -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-body" style="padding:14px 20px">
+          <div class="flex-center" style="gap:12px;flex-wrap:wrap">
+            <label style="margin:0;white-space:nowrap">Proceso:</label>
+            <select id="process-select" onchange="onProcessChange()" style="min-width:240px">
+              <option value="">— Selecciona un proceso —</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadCapability()">Analizar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Editor de especificaciones (colapsible) ─────────── -->
+      <div id="specs-card" class="card" style="display:none;margin-bottom:20px;overflow:hidden">
+        <div id="specs-hdr" class="spec-hdr" onclick="toggleSpecs()">
+          <div class="spec-hdr-left">
+            <span class="spec-title">Especificaciones del proceso</span>
+            <span id="specs-summary" class="spec-summary"></span>
+          </div>
+          <span id="specs-arrow" class="spec-arrow">▶</span>
+        </div>
+        <div id="specs-body" style="display:none">
+          <div class="spec-body">
+            <div id="specs-warn" class="spec-no-specs" style="display:none">
+              Este proceso no tiene LSI y LSE definidos. El cálculo de Cp/Cpk requiere ambos límites.
+            </div>
+            <div class="form-row" style="gap:14px;flex-wrap:wrap;display:flex;align-items:flex-end">
+              <div class="form-group" style="margin:0;min-width:120px">
+                <label>LSI (Límite Inferior)</label>
+                <input type="text" id="spec-lsl" inputmode="decimal" placeholder="ej. 495.0">
+              </div>
+              <div class="form-group" style="margin:0;min-width:120px">
+                <label>Nominal</label>
+                <input type="text" id="spec-nominal" inputmode="decimal" placeholder="ej. 500.0">
+              </div>
+              <div class="form-group" style="margin:0;min-width:120px">
+                <label>LSE (Límite Superior)</label>
+                <input type="text" id="spec-usl" inputmode="decimal" placeholder="ej. 505.0">
+              </div>
+              <div class="form-group" style="margin:0;min-width:100px">
+                <label>Unidad</label>
+                <input type="text" id="spec-unit" placeholder="ej. mm, kg">
+              </div>
+              <button class="btn btn-primary" onclick="saveSpecs()" id="btn-specs"
+                      style="align-self:flex-end;margin-bottom:1px">
+                Guardar especificaciones
+              </button>
+            </div>
+            <div id="specs-msg" style="margin-top:10px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Toma de datos (colapsible) ──────────────────────── -->
+      <div id="data-card" class="card" style="display:none;margin-bottom:20px;overflow:hidden">
+        <div id="data-hdr" class="data-hdr" onclick="toggleData()">
+          <div class="data-hdr-left">
+            <span class="data-title">Toma de datos</span>
+            <span id="meas-count-pill" class="data-count-pill">0 mediciones</span>
+          </div>
+          <span id="data-arrow" class="data-arrow">▶</span>
+        </div>
+        <div id="data-body" style="display:none">
+          <div class="data-body">
+            <div id="data-msg" style="margin-bottom:10px"></div>
+            <div class="input-panel">
+
+              <!-- Manual -->
+              <div>
+                <div class="panel-sub">Ingreso manual</div>
+                <div class="form-group">
+                  <label>Valores <span class="text-muted">(uno por línea, coma o punto y coma)</span></label>
+                  <textarea id="cap-values" rows="5"
+                    placeholder="499.2&#10;501.3&#10;500.8&#10;502.1&#10;498.9"></textarea>
+                </div>
+                <div class="form-group">
+                  <label>ID de subgrupo <span class="lbl-opt">(opcional)</span></label>
+                  <input type="number" id="cap-subgroup" min="1" placeholder="—"
+                         style="width:130px">
+                  <div class="field-hint">
+                    Opcional. El módulo puede simular agrupación automáticamente.
+                  </div>
+                </div>
+                <button class="btn btn-primary" onclick="insertCap()" id="btn-cap">
+                  Insertar mediciones
+                </button>
+              </div>
+
+              <!-- Import -->
+              <div>
+                <div class="panel-sub">Importar CSV o Excel</div>
+                <div class="form-group">
+                  <label>Archivo</label>
+                  <input type="file" id="cap-file" accept=".csv,.txt,.xlsx,.xls"
+                         style="padding:6px">
+                  <div class="field-hint">
+                    Formatos: <strong>.xlsx</strong>, <strong>.xls</strong>, <strong>.csv</strong>
+                  </div>
+                </div>
+                <div class="alert alert-info" style="font-size:12px;margin-bottom:12px">
+                  <div>
+                    Columna obligatoria: <code>value</code>.<br>
+                    <code>subgroup_id</code> es opcional.<br>
+                    <code style="font-size:11px">value<br>499.2<br>501.3<br>500.8</code>
+                  </div>
+                </div>
+                <button class="btn btn-primary" onclick="importCapFile()" id="btn-cap-file">
+                  Importar archivo
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="msg"></div>
+
+      <!-- ── Resultados ─────────────────────────────────────── -->
+      <div id="result-area" class="hidden">
+
+        <div class="capacity-status" id="status-banner">
+          <span id="status-icon" style="font-size:24px">●</span>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div id="status-title" style="font-size:16px;font-weight:800"></div>
+            </div>
+            <div id="status-sub" style="font-size:13px;margin-top:2px;opacity:.8"></div>
+          </div>
+        </div>
+
+        <div class="cap-grid">
+          <div class="cap-card">
+            <div class="cap-val" id="val-cp">—</div>
+            <div class="cap-lbl">Cp</div>
+            <div class="cap-sublbl">Capacidad potencial</div>
+          </div>
+          <div class="cap-card">
+            <div class="cap-val" id="val-cpk">—</div>
+            <div class="cap-lbl">Cpk</div>
+            <div class="cap-sublbl">Capacidad real</div>
+          </div>
+          <div class="cap-card">
+            <div class="cap-val" id="val-cpu">—</div>
+            <div class="cap-lbl">Cpu</div>
+            <div class="cap-sublbl">Capacidad hacia LSE</div>
+          </div>
+          <div class="cap-card">
+            <div class="cap-val" id="val-cpl">—</div>
+            <div class="cap-lbl">Cpl</div>
+            <div class="cap-sublbl">Capacidad hacia LSI</div>
+          </div>
+        </div>
+
+        <!-- Métricas principales -->
+        <div class="metrics-grid" style="margin-bottom:14px">
+          <div class="metric-card">
+            <div class="metric-label">Media (X̄)</div>
+            <div class="metric-value" id="val-xbar" style="font-size:22px">—</div>
+            <div class="metric-sub" id="val-unit"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label" id="lbl-sigma">Desv. Estándar (σ)</div>
+            <div class="metric-value" id="val-sigma" style="font-size:22px">—</div>
+            <div class="metric-sub" id="sub-sigma"></div>
+          </div>
+          <div class="metric-card" id="card-sigma-total" style="display:none">
+            <div class="metric-label">σ Total (largo plazo)</div>
+            <div class="metric-value" id="val-sigma-total" style="font-size:22px">—</div>
+            <div class="metric-sub">desv. estándar global</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Número de mediciones</div>
+            <div class="metric-value" id="val-n" style="font-size:22px">—</div>
+            <div class="metric-sub" id="sub-n">observaciones</div>
+          </div>
+        </div>
+
+        <!-- Métricas de posición y tolerancia -->
+        <div class="metrics-grid" style="margin-bottom:20px">
+          <div class="metric-card">
+            <div class="metric-label">Tolerancia (LSE − LSI)</div>
+            <div class="metric-value" id="val-tolerance" style="font-size:22px">—</div>
+            <div class="metric-sub" id="val-unit2"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Distancia Media → Nominal</div>
+            <div class="metric-value" id="val-dist-nom" style="font-size:22px">—</div>
+            <div class="metric-sub" id="val-dist-nom-sub" style="font-size:11px"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Distancia Media → LSE</div>
+            <div class="metric-value" id="val-dist-usl" style="font-size:22px">—</div>
+            <div class="metric-sub" id="val-dist-usl-sub" style="font-size:11px"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Distancia Media → LSI</div>
+            <div class="metric-value" id="val-dist-lsl" style="font-size:22px">—</div>
+            <div class="metric-sub" id="val-dist-lsl-sub" style="font-size:11px"></div>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <div class="chart-title">Distribución del proceso vs. Especificaciones</div>
+          <div id="centering-msg"></div>
+          <div class="chart-cap"><canvas id="cap-chart"></canvas></div>
+        </div>
+
+        <div class="chart-wrap">
+          <div class="chart-title">Histograma de mediciones</div>
+          <div class="chart-hist"><canvas id="hist-chart"></canvas></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">Recomendaciones automáticas</div></div>
+          <div class="card-body">
+            <div class="rec-grid" id="recommendations"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <div class="card-title">Pruebas estadísticas</div>
+            <span class="alpha-note" style="margin-left:auto">α = 0.05</span>
+          </div>
+          <div class="card-body" id="tests-body">
+            <div class="loading"><span class="spinner"></span> Calculando...</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/charts.js"></script>
+<script>
+  if (!requireLogin()) { /* redirected */ }
+  initSidebar('capability');
+  initTopBar('Análisis de Capacidad');
+
+  let currentProcess  = null;
+  let specsPanelOpen  = false;
+  let dataPanelOpen   = false;
+
+  // ── Inicialización ─────────────────────────────────────────
+  async function init() {
+    const processes = await processesApi.list().catch(() => []);
+    const sel = document.getElementById('process-select');
+    processes.forEach(p =>
+      sel.appendChild(new Option(`${p.name}${p.unit ? ` (${p.unit})` : ''}`, p.id))
+    );
+    const urlPid = new URLSearchParams(location.search).get('process_id');
+    if (urlPid) { sel.value = urlPid; await onProcessChange(); }
+  }
+
+  // ── Cambio de proceso ──────────────────────────────────────
+  async function onProcessChange() {
+    const pid = document.getElementById('process-select').value;
+    const hide = () => {
+      ['specs-card','data-card'].forEach(id =>
+        document.getElementById(id).style.display = 'none');
+      document.getElementById('result-area').classList.add('hidden');
+    };
+    if (!pid) { hide(); return; }
+
+    try {
+      currentProcess = await processesApi.get(pid);
+      document.getElementById('process-crumb').textContent = `· ${currentProcess.name}`;
+
+      // Show helper cards
+      document.getElementById('specs-card').style.display = 'block';
+      document.getElementById('data-card').style.display  = 'block';
+
+      populateSpecEditor(currentProcess);
+      loadMeasCount(pid);
+      loadCapability();
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+    }
+  }
+
+  // ── Spec editor ────────────────────────────────────────────
+  function toggleSpecs() {
+    specsPanelOpen = !specsPanelOpen;
+    document.getElementById('specs-body').style.display = specsPanelOpen ? 'block' : 'none';
+    document.getElementById('specs-hdr').classList[specsPanelOpen ? 'add' : 'remove']('open');
+    document.getElementById('specs-arrow').textContent = specsPanelOpen ? '▼' : '▶';
+  }
+
+  function populateSpecEditor(p) {
+    document.getElementById('spec-lsl').value     = p.lsl     != null ? p.lsl     : '';
+    document.getElementById('spec-nominal').value = p.nominal != null ? p.nominal : '';
+    document.getElementById('spec-usl').value     = p.usl     != null ? p.usl     : '';
+    document.getElementById('spec-unit').value    = p.unit    || '';
+    updateSpecsSummary(p);
+
+    const noSpecs = p.lsl == null || p.usl == null;
+    document.getElementById('specs-warn').style.display = noSpecs ? 'flex' : 'none';
+    if (noSpecs && !specsPanelOpen) toggleSpecs();
+  }
+
+  function updateSpecsSummary(p) {
+    const parts = [];
+    if (p.lsl     != null) parts.push(`LSI: ${p.lsl}`);
+    if (p.nominal != null) parts.push(`Nominal: ${p.nominal}`);
+    if (p.usl     != null) parts.push(`LSE: ${p.usl}`);
+    if (p.unit)            parts.push(p.unit);
+    document.getElementById('specs-summary').textContent = parts.join(' | ');
+  }
+
+  async function saveSpecs() {
+    const pid = document.getElementById('process-select').value;
+    const btn = document.getElementById('btn-specs');
+    const msg = document.getElementById('specs-msg');
+
+    const lslRaw     = document.getElementById('spec-lsl').value.trim();
+    const uslRaw     = document.getElementById('spec-usl').value.trim();
+    const nomRaw     = document.getElementById('spec-nominal').value.trim();
+    const unit       = document.getElementById('spec-unit').value.trim();
+
+    const lsl     = lslRaw ? parseDecimal(lslRaw) : null;
+    const usl     = uslRaw ? parseDecimal(uslRaw) : null;
+    const nominal = nomRaw ? parseDecimal(nomRaw) : null;
+
+    msg.innerHTML = '';
+    if (lslRaw && isNaN(lsl)) return showAlert(msg, 'LSI inválido.', 'error');
+    if (uslRaw && isNaN(usl)) return showAlert(msg, 'LSE inválido.', 'error');
+    if (lsl != null && usl != null && usl <= lsl)
+      return showAlert(msg, 'LSE debe ser mayor que LSI.', 'error');
+
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    try {
+      const updated = await processesApi.update(pid, {
+        name:    currentProcess.name,
+        unit:    unit || null,
+        lsl:     lsl,
+        nominal: nominal != null && !isNaN(nominal) ? nominal : null,
+        usl:     usl
+      });
+      currentProcess = updated;
+      updateSpecsSummary(updated);
+      document.getElementById('specs-warn').style.display =
+        (updated.lsl == null || updated.usl == null) ? 'flex' : 'none';
+      showAlert(msg, 'Especificaciones guardadas.', 'success');
+      loadCapability();
+    } catch (err) {
+      showAlert(msg, err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Guardar especificaciones';
+    }
+  }
+
+  // ── Data panel ─────────────────────────────────────────────
+  function toggleData() {
+    dataPanelOpen = !dataPanelOpen;
+    document.getElementById('data-body').style.display = dataPanelOpen ? 'block' : 'none';
+    document.getElementById('data-hdr').classList[dataPanelOpen ? 'add' : 'remove']('open');
+    document.getElementById('data-arrow').textContent = dataPanelOpen ? '▼' : '▶';
+  }
+
+  async function loadMeasCount(pid) {
+    try {
+      const r = await measurementsApi.list(pid, 1, 0);
+      document.getElementById('meas-count-pill').textContent = `${r.total} mediciones`;
+      if (r.total === 0 && !dataPanelOpen) toggleData();
+    } catch {}
+  }
+
+  function parseTextarea(raw) {
+    const primary = raw.split(/[\n;]+/).map(s => s.trim()).filter(Boolean);
+    const nums = [], bad = [];
+    for (const entry of primary) {
+      const n = parseDecimal(entry);
+      if (!isNaN(n)) { nums.push(n); continue; }
+      for (const p of entry.split(',').map(s => s.trim()).filter(Boolean)) {
+        const n2 = parseDecimal(p);
+        if (!isNaN(n2)) nums.push(n2); else bad.push(p);
+      }
+    }
+    return { nums, bad };
+  }
+
+  async function insertCap() {
+    const pid = document.getElementById('process-select').value;
+    const raw = document.getElementById('cap-values').value.trim();
+    const sg  = document.getElementById('cap-subgroup').value.trim();
+    const btn = document.getElementById('btn-cap');
+    const msg = document.getElementById('data-msg');
+
+    msg.innerHTML = '';
+    if (!raw) return showAlert(msg, 'Ingresa al menos un valor.', 'error');
+
+    const { nums, bad } = parseTextarea(raw);
+    if (bad.length)   return showAlert(msg, `Valores inválidos: ${bad.join(', ')}`, 'error');
+    if (!nums.length) return showAlert(msg, 'No se encontraron valores numéricos.', 'error');
+
+    btn.disabled = true; btn.textContent = 'Insertando...';
+    try {
+      const items = nums.map(v => ({
+        process_id:  pid,
+        value:       v,
+        subgroup_id: sg ? parseInt(sg) : null
+      }));
+      const result = await measurementsApi.createBatch(items);
+      showAlert(msg, `${result.inserted} medición(es) insertada(s).`, 'success');
+      document.getElementById('cap-values').value   = '';
+      document.getElementById('cap-subgroup').value = '';
+      await loadMeasCount(pid);
+      loadCapability();
+    } catch (err) {
+      showAlert(msg, err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Insertar mediciones';
+    }
+  }
+
+  async function importCapFile() {
+    const pid  = document.getElementById('process-select').value;
+    const file = document.getElementById('cap-file').files[0];
+    const btn  = document.getElementById('btn-cap-file');
+    const msg  = document.getElementById('data-msg');
+
+    msg.innerHTML = '';
+    if (!file) return showAlert(msg, 'Selecciona un archivo.', 'error');
+
+    btn.disabled = true; btn.textContent = 'Importando...';
+    try {
+      const result = await measurementsApi.importCSV(pid, file);
+      const extra  = result.errors.length ? ` Errores: ${result.errors.join('; ')}` : '';
+      showAlert(msg, `${result.inserted} de ${result.total_rows} filas importadas.${extra}`, 'success');
+      document.getElementById('cap-file').value = '';
+      await loadMeasCount(pid);
+      loadCapability();
+    } catch (err) {
+      showAlert(msg, err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Importar archivo';
+    }
+  }
+
+  // ── Calcular capacidad ─────────────────────────────────────
+  async function loadCapability() {
+    const pid = document.getElementById('process-select').value;
+    const msg = document.getElementById('msg');
+    if (!pid) return;
+    msg.innerHTML = '';
+
+    document.getElementById('tests-body').innerHTML =
+      '<div class="loading"><span class="spinner"></span> Calculando pruebas...</div>';
+
+    try {
+      const [capResult, histResult] = await Promise.all([
+        analysisApi.capability(pid),
+        analysisApi.histogram(pid, 10)
+      ]);
+
+      document.getElementById('process-crumb').textContent = `· ${capResult.process.name}`;
+      renderCapability(capResult);
+      renderHistogram('hist-chart', histResult.histogram, histResult.normalCurve,
+        capResult.process.usl, capResult.process.lsl, capResult.process.nominal);
+      document.getElementById('result-area').classList.remove('hidden');
+
+      if (capResult.statisticalTests) {
+        renderStatisticalTests(capResult.statisticalTests);
+      } else {
+        document.getElementById('tests-body').innerHTML =
+          '<div style="color:var(--text-muted);font-size:13px">Se necesitan al menos 7 mediciones.</div>';
+      }
+    } catch (err) {
+      showAlert(msg, err.message, 'error');
+      document.getElementById('result-area').classList.add('hidden');
+      document.getElementById('tests-body').innerHTML = '';
+    }
+  }
+
+  // ── Render capacidad ───────────────────────────────────────
+  function renderCapability({ process, capability }) {
+    const { cp, cpk, cpu, cpl, xbar, sigma, sigmaTotal, sigmaMethod, status, n,
+            n_subgroups, subgroup_size, tolerance, distToUsl, distToLsl, distToNominal } = capability;
+
+    // Semáforo
+    const banner = document.getElementById('status-banner');
+    banner.className = `capacity-status ${status}`;
+    const icons  = { capaz: '●', marginal: '◑', no_capaz: '○' };
+    const titles = {
+      capaz:    'Proceso CAPAZ — Cpk ≥ 1.33',
+      marginal: 'Proceso MARGINALMENTE CAPAZ — 1.00 ≤ Cpk < 1.33',
+      no_capaz: 'Proceso NO CAPAZ — Cpk < 1.00'
+    };
+    const subs = {
+      capaz:    'El proceso cumple las especificaciones de manera consistente.',
+      marginal: 'El proceso requiere monitoreo continuo y mejora.',
+      no_capaz: 'El proceso produce defectos. Se requiere acción correctiva inmediata.'
+    };
+    document.getElementById('status-icon').textContent = icons[status] || '●';
+    document.getElementById('status-title').textContent = titles[status] || '';
+    document.getElementById('status-sub').textContent   = subs[status]  || '';
+
+    document.getElementById('val-cp').textContent   = formatNum(cp, 3);
+    document.getElementById('val-cpk').textContent  = formatNum(cpk, 3);
+    document.getElementById('val-cpu').textContent  = formatNum(cpu, 3);
+    document.getElementById('val-cpl').textContent  = formatNum(cpl, 3);
+    document.getElementById('val-xbar').textContent = formatNum(xbar, 4);
+    document.getElementById('val-unit').textContent = process.unit || '';
+
+    document.getElementById('val-cpk').className =
+      `cap-val ${status === 'capaz' ? 'text-success' : status === 'marginal' ? 'text-warning' : 'text-danger'}`;
+
+    if (sigmaMethod === 'within') {
+      document.getElementById('lbl-sigma').textContent = 'Desv. Estándar σ̂w (corto plazo)';
+      document.getElementById('sub-sigma').textContent = 'σ̂w = R̄/d₂ (dentro de subgrupos)';
+      document.getElementById('val-sigma-total').textContent = formatNum(sigmaTotal, 4);
+      document.getElementById('card-sigma-total').style.display = '';
+    } else {
+      document.getElementById('lbl-sigma').textContent = 'Desv. Estándar (σ)';
+      document.getElementById('sub-sigma').textContent = '';
+      document.getElementById('card-sigma-total').style.display = 'none';
+    }
+    document.getElementById('val-sigma').textContent = formatNum(sigma, 4);
+
+    document.getElementById('val-n').textContent = n;
+    document.getElementById('sub-n').textContent = n_subgroups > 1
+      ? `${n_subgroups} subgrupos × ${subgroup_size} obs.` : 'observaciones';
+
+    const unit = process.unit || '';
+    document.getElementById('val-tolerance').textContent = formatNum(tolerance, 4);
+    document.getElementById('val-unit2').textContent     = unit;
+
+    const distNomEl  = document.getElementById('val-dist-nom');
+    const distNomSub = document.getElementById('val-dist-nom-sub');
+    if (distToNominal != null) {
+      distNomEl.textContent  = formatNum(distToNominal, 4);
+      distNomSub.textContent = unit;
+      distNomEl.className = `metric-value ${distToNominal <= 0.5 * sigma ? 'text-success' : distToNominal <= 1.5 * sigma ? 'text-warning' : 'text-danger'}`;
+    } else {
+      distNomEl.textContent  = '—';
+      distNomSub.textContent = 'Nominal no definido';
+      distNomEl.className    = 'metric-value';
+    }
+
+    const distUslEl  = document.getElementById('val-dist-usl');
+    distUslEl.textContent  = formatNum(distToUsl, 4);
+    document.getElementById('val-dist-usl-sub').textContent = unit;
+    distUslEl.className = `metric-value ${distToUsl > 0 ? 'text-success' : 'text-danger'}`;
+    distUslEl.style.fontSize = '22px';
+
+    const distLslEl  = document.getElementById('val-dist-lsl');
+    distLslEl.textContent  = formatNum(distToLsl, 4);
+    document.getElementById('val-dist-lsl-sub').textContent = unit;
+    distLslEl.className = `metric-value ${distToLsl > 0 ? 'text-success' : 'text-danger'}`;
+    distLslEl.style.fontSize = '22px';
+
+    const nomVal = parseFloat(process.nominal);
+    const centeringEl = document.getElementById('centering-msg');
+    if (!isNaN(nomVal) && sigma > 0) {
+      const dev = Math.abs(xbar - nomVal);
+      let cls, icon, text;
+      if (dev <= 0.5 * sigma) {
+        cls = 'centered'; text = 'Proceso centrado respecto al valor nominal';
+      } else if (dev <= 1.5 * sigma) {
+        cls = 'slight';
+        text = `Proceso ligeramente descentrado — desplazamiento de ${formatNum(dev, 3)} ${process.unit || ''} desde el nominal`;
+      } else {
+        cls = 'offset';
+        text = `Proceso descentrado — desplazamiento de ${formatNum(dev, 3)} ${process.unit || ''} respecto al nominal`;
+      }
+      centeringEl.innerHTML = `<div class="centering-banner ${cls}"><span>${text}</span></div>`;
+    } else {
+      centeringEl.innerHTML = '';
+    }
+
+    renderCapabilityChart('cap-chart',
+      parseFloat(process.usl), parseFloat(process.lsl),
+      parseFloat(process.nominal), xbar, sigma);
+
+    renderRecommendations(capability, process);
+  }
+
+  function renderRecommendations(cap, proc) {
+    const { cp, cpk, cpu, cpl, xbar, status } = cap;
+    const usl = parseFloat(proc.usl);
+    const lsl = parseFloat(proc.lsl);
+    const nom = parseFloat(proc.nominal);
+    const recs = [];
+
+    if (status === 'capaz') {
+      recs.push({ cls: 'good', text: 'El proceso cumple las especificaciones. Mantén el monitoreo con cartas de control.' });
+      if (Math.abs(cpk - cp) > 0.1)
+        recs.push({ cls: 'warn', text: `Descentrado: Cp=${formatNum(cp,3)} vs Cpk=${formatNum(cpk,3)}. Ajusta el proceso al nominal.` });
+    } else if (status === 'marginal') {
+      recs.push({ cls: 'warn', text: 'Proceso marginal. Implementa acciones para reducir la variabilidad.' });
+      if (cpu < cpl)
+        recs.push({ cls: 'warn', text: `Proceso sesgado hacia LSE (Cpu=${formatNum(cpu,3)} < Cpl=${formatNum(cpl,3)}).` });
+      else if (cpl < cpu)
+        recs.push({ cls: 'warn', text: `Proceso sesgado hacia LSI (Cpl=${formatNum(cpl,3)} < Cpu=${formatNum(cpu,3)}).` });
+    } else {
+      recs.push({ cls: 'bad', text: 'Acción correctiva urgente. El proceso genera productos fuera de especificación.' });
+      if (cp < 1.0)
+        recs.push({ cls: 'bad', text: `Variabilidad excesiva (Cp=${formatNum(cp,3)}). Identifica y elimina causas.` });
+      if (!isNaN(nom) && Math.abs(xbar - nom) > (usl - lsl) * 0.1)
+        recs.push({ cls: 'bad', text: `Proceso significativamente descentrado del nominal (${nom}).` });
+    }
+    if (cap.n < 30)
+      recs.push({ cls: 'warn', text: `Muestra pequeña (n=${cap.n}). Los índices pueden no ser representativos. Recopila ≥ 30 obs.` });
+
+    document.getElementById('recommendations').innerHTML = recs.map(r =>
+      `<div class="rec-item ${r.cls}"><span>${r.text}</span></div>`).join('');
+  }
+
+  // ── Pruebas estadísticas ───────────────────────────────────
+  function renderStatisticalTests({ normality, homoscedasticity, homogeneity, n_total, n_subgroups }) {
+    const body = document.getElementById('tests-body');
+    const tests = [
+      { label:'Normalidad',            subLabel:'Anderson-Darling',         data:normality,        passKey:'normal',        passText:'Normal',        failText:'No normal'      },
+      { label:'Homocedasticidad',      subLabel:'Levene (Brown-Forsythe)',   data:homoscedasticity, passKey:'homoscedastic', passText:'Homocedástico', failText:'Heterocedástico'},
+      { label:'Homogeneidad de medias',subLabel:'Kruskal-Wallis',           data:homogeneity,      passKey:'homogeneous',   passText:'Homogéneo',     failText:'No homogéneo'   }
+    ];
+
+    const groupNote = n_subgroups < 2
+      ? ' · <span style="color:var(--warning)">Sin subgrupos — Levene y K-W no aplican</span>'
+      : '';
+
+    const summary = `<p style="font-size:12px;color:var(--text-sec);margin-bottom:16px">
+      <strong>${n_total}</strong> obs. · <strong>${n_subgroups}</strong> subgrupos${groupNote}</p>`;
+
+    const cards = tests.map(t => {
+      const d = t.data;
+      if (!d.available) return `
+        <div class="test-card na">
+          <div class="test-name">${t.label}</div>
+          <div class="test-h0">${t.subLabel}</div>
+          <div class="test-na-msg"><span style="opacity:.5;font-size:16px">—</span><br>${escHtml(d.reason)}</div>
+        </div>`;
+
+      const passed   = d[t.passKey];
+      const cls      = passed ? 'pass' : 'fail';
+      const pColor   = d.p_value <= 0.05 ? 'var(--danger)' : 'var(--success)';
+      const glLine   = 'df' in d
+        ? `<div class="test-stat"><span class="test-stat-lbl">G.L.</span><span class="test-stat-val" style="font-size:16px;color:var(--text-sec)">${d.df}</span></div>`
+        : d.df1 != null
+          ? `<div class="test-stat"><span class="test-stat-lbl">G.L.</span><span class="test-stat-val" style="font-size:16px;color:var(--text-sec)">${d.df1}, ${d.df2}</span></div>`
+          : '';
+
+      return `
+        <div class="test-card ${cls}">
+          <div class="test-name">${t.label}</div>
+          <div class="test-h0">${t.subLabel} · H₀: ${escHtml(d.h0)}</div>
+          <div class="test-stats">
+            <div class="test-stat">
+              <span class="test-stat-lbl">Estadístico</span>
+              <span class="test-stat-val" style="color:var(--text)">${d.statistic}</span>
+            </div>
+            <div class="test-stat">
+              <span class="test-stat-lbl">p-valor</span>
+              <span class="test-stat-val" style="color:${pColor}">${d.p_value}</span>
+            </div>
+            ${glLine}
+            <span class="test-result-badge ${cls}">${passed ? t.passText : t.failText}</span>
+          </div>
+          <div class="test-interp">${escHtml(d.interpretation)}</div>
+        </div>`;
+    }).join('');
+
+    const note = `<div style="margin-top:14px;padding:12px 14px;background:#f8fafc;border-radius:var(--radius);font-size:11px;color:var(--text-muted);border:1px solid var(--border)">
+      <strong>Nota metodológica:</strong> Anderson-Darling (Stephens 1974) · Levene Brown-Forsythe · Kruskal-Wallis con corrección por empates. α = 0.05.
+    </div>`;
+
+    body.innerHTML = summary + `<div class="tests-grid">${cards}</div>` + note;
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Procesos — SPC SaaS</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="main-content">
+    <div class="top-bar">
+      <div class="top-bar-title" id="top-bar-title">Procesos</div>
+      <div class="top-bar-right">
+        <span class="sub-badge" id="sub-status-badge">...</span>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div id="msg"></div>
+
+      <div class="toolbar">
+        <h2 style="font-size:15px;font-weight:700">Procesos definidos</h2>
+        <div class="toolbar-spacer"></div>
+        <button class="btn btn-primary" onclick="openModal()">+ Nuevo proceso</button>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table id="processes-table">
+            <thead>
+              <tr>
+                <th>Proceso</th>
+                <th>Unidad</th>
+                <th>LSI</th>
+                <th>Nominal</th>
+                <th>LSE</th>
+                <th>Mediciones</th>
+                <th>Creado por</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="processes-tbody">
+              <tr><td colspan="8" class="text-center" style="padding:40px;color:var(--text-muted)"><span class="spinner"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal crear/editar proceso -->
+  <div class="modal-overlay hidden" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-title">Nuevo proceso</div>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-msg"></div>
+        <form id="process-form" onsubmit="handleSubmit(event)">
+          <div class="form-group">
+            <label>Nombre del proceso *</label>
+            <input type="text" id="f-name" required placeholder="Ej. Llenado de Envases">
+          </div>
+          <div class="form-group">
+            <label>Descripción</label>
+            <textarea id="f-desc" rows="2" placeholder="Descripción opcional del proceso..."></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Unidad de medida</label>
+              <input type="text" id="f-unit" placeholder="ml, mm, kg...">
+            </div>
+            <div class="form-group">
+              <label>Valor nominal</label>
+              <input type="text" id="f-nominal" inputmode="decimal" placeholder="500 o 500,0">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>LSI — Límite Inferior de Especificación</label>
+              <input type="text" id="f-lsl" inputmode="decimal" placeholder="495 o 495,0">
+            </div>
+            <div class="form-group">
+              <label>LSE — Límite Superior de Especificación</label>
+              <input type="text" id="f-usl" inputmode="decimal" placeholder="505 o 505,0">
+            </div>
+          </div>
+          <input type="hidden" id="f-id">
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="handleSubmit(event)" id="btn-save">Guardar proceso</button>
+      </div>
+    </div>
+  </div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  if (!requireLogin()) { /* redirected */ }
+  initSidebar('processes');
+  initTopBar('Procesos');
+
+  let processesData = [];
+
+  async function loadProcesses() {
+    try {
+      processesData = await processesApi.list();
+      renderTable();
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+      document.getElementById('processes-tbody').innerHTML =
+        `<tr><td colspan="8" class="text-center" style="padding:30px;color:var(--text-muted)">Error al cargar los procesos.</td></tr>`;
+    }
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById('processes-tbody');
+    if (!processesData.length) {
+      tbody.innerHTML = `<tr><td colspan="8">
+        <div class="empty-state">
+          <div class="empty-title">Sin procesos</div>
+          <div class="empty-sub">Crea tu primer proceso para comenzar.</div>
+        </div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = processesData.map(p => `
+      <tr>
+        <td><strong>${escHtml(p.name)}</strong>${p.description ? `<br><span style="font-size:11px;color:var(--text-muted)">${escHtml(p.description)}</span>` : ''}</td>
+        <td>${escHtml(p.unit || '—')}</td>
+        <td>${p.lsl != null ? p.lsl : '—'}</td>
+        <td>${p.nominal != null ? p.nominal : '—'}</td>
+        <td>${p.usl != null ? p.usl : '—'}</td>
+        <td><span class="badge badge-blue">${p.measurement_count}</span></td>
+        <td style="font-size:12px;color:var(--text-sec)">${escHtml(p.created_by_name || '—')}</td>
+        <td>
+          <div class="flex" style="gap:6px;flex-wrap:wrap">
+            <a href="/measurements.html?process_id=${p.id}" class="btn btn-secondary btn-sm">Mediciones</a>
+            <a href="/capability.html?process_id=${p.id}" class="btn btn-secondary btn-sm">Capacidad</a>
+            <button class="btn btn-secondary btn-sm" onclick="openModal(${JSON.stringify(p).replace(/"/g,'&quot;')})">Editar</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteProcess('${p.id}', '${escHtml(p.name).replace(/'/g,"\\'")}')">Eliminar</button>
+          </div>
+        </td>
+      </tr>`).join('');
+  }
+
+  function openModal(proc) {
+    document.getElementById('modal-msg').innerHTML = '';
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('f-id').value      = '';
+    document.getElementById('f-name').value    = '';
+    document.getElementById('f-desc').value    = '';
+    document.getElementById('f-unit').value    = '';
+    document.getElementById('f-nominal').value = '';
+    document.getElementById('f-lsl').value     = '';
+    document.getElementById('f-usl').value     = '';
+
+    if (proc) {
+      document.getElementById('modal-title').textContent = 'Editar proceso';
+      document.getElementById('f-id').value      = proc.id;
+      document.getElementById('f-name').value    = proc.name || '';
+      document.getElementById('f-desc').value    = proc.description || '';
+      document.getElementById('f-unit').value    = proc.unit || '';
+      document.getElementById('f-nominal').value = proc.nominal || '';
+      document.getElementById('f-lsl').value     = proc.lsl || '';
+      document.getElementById('f-usl').value     = proc.usl || '';
+    } else {
+      document.getElementById('modal-title').textContent = 'Nuevo proceso';
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const msgEl = document.getElementById('modal-msg');
+    const id    = document.getElementById('f-id').value;
+    const btn   = document.getElementById('btn-save');
+
+    const nomRaw = document.getElementById('f-nominal').value.trim();
+    const lslRaw = document.getElementById('f-lsl').value.trim();
+    const uslRaw = document.getElementById('f-usl').value.trim();
+    const nominal = nomRaw ? parseDecimal(nomRaw) : null;
+    const lsl     = lslRaw ? parseDecimal(lslRaw) : null;
+    const usl     = uslRaw ? parseDecimal(uslRaw) : null;
+
+    if (nomRaw && isNaN(nominal)) return showAlert(msgEl, 'Valor nominal inválido.', 'error');
+    if (lslRaw && isNaN(lsl))     return showAlert(msgEl, 'LSI inválido.', 'error');
+    if (uslRaw && isNaN(usl))     return showAlert(msgEl, 'LSE inválido.', 'error');
+    if (lsl != null && usl != null && lsl >= usl)
+      return showAlert(msgEl, 'LSI debe ser menor que LSE.', 'error');
+
+    const payload = {
+      name:        document.getElementById('f-name').value.trim(),
+      description: document.getElementById('f-desc').value.trim(),
+      unit:        document.getElementById('f-unit').value.trim(),
+      nominal,
+      lsl,
+      usl
+    };
+
+    if (!payload.name) return showAlert(msgEl, 'El nombre es obligatorio.', 'error');
+
+    btn.disabled    = true;
+    btn.textContent = 'Guardando...';
+
+    try {
+      if (id) {
+        await processesApi.update(id, payload);
+      } else {
+        await processesApi.create(payload);
+      }
+      closeModal();
+      await loadProcesses();
+      showAlert(document.getElementById('msg'), `Proceso ${id ? 'actualizado' : 'creado'} correctamente.`, 'success');
+    } catch (err) {
+      showAlert(msgEl, err.message, 'error');
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = 'Guardar proceso';
+    }
+  }
+
+  async function deleteProcess(id, name) {
+    if (!confirm(`¿Eliminar el proceso "${name}" y todas sus mediciones? Esta acción no se puede deshacer.`)) return;
+    try {
+      await processesApi.delete(id);
+      await loadProcesses();
+      showAlert(document.getElementById('msg'), 'Proceso eliminado.', 'success');
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+    }
+  }
+
+  loadProcesses();
+</script>
+</body>
+</html>

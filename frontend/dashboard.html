@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Control — SPC SaaS</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .welcome-banner {
+      background: linear-gradient(135deg, #1a2e4a, #2563eb);
+      border-radius: 8px;
+      padding: 22px 26px;
+      color: #fff;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .welcome-text h2 { font-size: 20px; font-weight: 800; }
+    .welcome-text p  { font-size: 13px; opacity: .8; margin-top: 4px; }
+    .stat-bar {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+    .stat-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      flex: 1;
+      min-width: 0;
+    }
+    .stat-num { font-size: 30px; font-weight: 800; color: var(--text); }
+    .stat-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
+    .sub-alert {
+      background: var(--danger-bg);
+      border: 1px solid #fecaca;
+      color: var(--danger);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .sub-alert.warn { background: var(--warning-bg); border-color: #fde68a; color: var(--warning); }
+  </style>
+</head>
+<body class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="main-content">
+    <div class="top-bar">
+      <div>
+        <div class="top-bar-title" id="top-bar-title">Panel de Control</div>
+      </div>
+      <div class="top-bar-right">
+        <span class="sub-badge" id="sub-status-badge">...</span>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div id="sub-alert-container"></div>
+
+      <div class="welcome-banner">
+        <div class="welcome-text">
+          <h2>Bienvenido al Panel de Control</h2>
+          <p>Monitoreo de capacidad y control estadístico de procesos en tiempo real</p>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="stat-bar" id="stat-bar">
+        <div class="stat-box"><div class="stat-lbl">Procesos activos</div><div class="stat-num" id="kpi-processes">—</div></div>
+        <div class="stat-box"><div class="stat-lbl">Procesos capaces (Cpk≥1.33)</div><div class="stat-num text-success" id="kpi-capable">—</div></div>
+        <div class="stat-box"><div class="stat-lbl">Procesos marginales</div><div class="stat-num text-warning" id="kpi-marginal">—</div></div>
+        <div class="stat-box"><div class="stat-lbl">Procesos no capaces</div><div class="stat-num text-danger" id="kpi-nocapable">—</div></div>
+      </div>
+
+      <!-- Procesos -->
+      <div class="toolbar">
+        <div class="section-title" style="margin:0;border:0;padding:0">Resumen de procesos</div>
+        <div class="toolbar-spacer"></div>
+        <a href="/processes.html" class="btn btn-secondary btn-sm">Ver todos los procesos</a>
+        <a href="/processes.html" class="btn btn-primary btn-sm">+ Nuevo proceso</a>
+      </div>
+
+      <div id="processes-container">
+        <div class="loading"><span class="spinner"></span> Cargando procesos...</div>
+      </div>
+    </div>
+  </div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  if (!requireLogin()) { /* redirected */ }
+
+  initSidebar('dashboard');
+  initTopBar('Panel de Control');
+
+  async function loadDashboard() {
+    const user    = Auth.getUser();
+    const company = Auth.getCompany();
+    const subData = await billingApi.status().catch(() => null);
+    const status  = subData?.subscription_status || company?.subscription_status || 'inactive';
+
+    // Sub alert
+    const alertEl = document.getElementById('sub-alert-container');
+    if (status === 'inactive') {
+      alertEl.innerHTML = `
+        <div class="sub-alert">
+          <div>
+            <strong>Suscripción inactiva.</strong> Para acceder a todos los módulos necesitas una suscripción activa.
+            <br><button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="startCheckout()">Activar suscripción</button>
+            ${location.hostname === 'localhost' ? '<button class="btn btn-secondary btn-sm" style="margin-top:8px;margin-left:8px" onclick="activateDev()">Activar demo (dev)</button>' : ''}
+          </div>
+        </div>`;
+    } else if (status === 'past_due') {
+      alertEl.innerHTML = `
+        <div class="sub-alert warn">
+          <strong>Pago vencido.</strong> Por favor actualiza tu método de pago para evitar la interrupción del servicio.
+          <button class="btn btn-warning btn-sm" style="margin-left:12px" onclick="openPortal()">Actualizar pago</button>
+        </div>`;
+    }
+
+    if (status !== 'active') {
+      document.getElementById('processes-container').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-title">Acceso restringido</div>
+          <div class="empty-sub">Activa tu suscripción para ver y gestionar procesos.</div>
+        </div>`;
+      document.getElementById('kpi-processes').textContent = '—';
+      return;
+    }
+
+    // Cargar resumen
+    try {
+      const summaries = await analysisApi.dashboardSummary();
+      renderKPIs(summaries);
+      renderProcessCards(summaries);
+    } catch (err) {
+      document.getElementById('processes-container').innerHTML = `
+        <div class="alert alert-error">Error al cargar los procesos: ${escHtml(err.message)}</div>`;
+    }
+  }
+
+  function renderKPIs(summaries) {
+    document.getElementById('kpi-processes').textContent  = summaries.length;
+    document.getElementById('kpi-capable').textContent    = summaries.filter(p => p.status === 'capaz').length;
+    document.getElementById('kpi-marginal').textContent   = summaries.filter(p => p.status === 'marginal').length;
+    document.getElementById('kpi-nocapable').textContent  = summaries.filter(p => p.status === 'no_capaz').length;
+  }
+
+  function renderProcessCards(summaries) {
+    const el = document.getElementById('processes-container');
+    if (!summaries.length) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-title">Sin procesos definidos</div>
+          <div class="empty-sub">Crea tu primer proceso para comenzar el análisis de capacidad.</div>
+          <a href="/processes.html" class="btn btn-primary" style="margin-top:16px">+ Crear proceso</a>
+        </div>`;
+      return;
+    }
+
+    el.innerHTML = `<div class="process-grid">${summaries.map(p => {
+      const status = p.status || 'sin_datos';
+      const cpkTxt = p.cpk != null ? Number(p.cpk).toFixed(3) : '—';
+      const specParts = [
+        p.lsl != null ? `<div class="spec-item"><span class="spec-label">LSI</span><span class="spec-val">${p.lsl} ${p.unit||''}</span></div>` : '',
+        p.nominal != null ? `<div class="spec-item"><span class="spec-label">Nominal</span><span class="spec-val">${p.nominal} ${p.unit||''}</span></div>` : '',
+        p.usl != null ? `<div class="spec-item"><span class="spec-label">LSE</span><span class="spec-val">${p.usl} ${p.unit||''}</span></div>` : ''
+      ].join('');
+
+      return `
+        <a class="process-card" href="/capability.html?process_id=${p.id}">
+          <div class="process-card-header">
+            <div>
+              <div class="process-name">${escHtml(p.name)}</div>
+              <div class="process-unit">${escHtml(p.unit || 'Sin unidad')} · ${p.n} mediciones</div>
+            </div>
+            <div class="cpk-badge ${status}">${cpkTxt}</div>
+          </div>
+          <div class="process-specs">${specParts}</div>
+          <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">${cpkLabel(p.cpk)}</div>
+        </a>`;
+    }).join('')}</div>`;
+  }
+
+  async function startCheckout() {
+    try {
+      const { url } = await billingApi.checkout();
+      window.location.href = url;
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function openPortal() {
+    try {
+      const { url } = await billingApi.portal();
+      window.location.href = url;
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function activateDev() {
+    try {
+      await billingApi.activateDev();
+      location.reload();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

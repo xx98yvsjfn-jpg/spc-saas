@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrada de Datos — SPC SaaS</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    /* ── Barra de controles ───────────────────────────────────── */
+    .ctrl-bar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 12px 20px;
+    }
+    .ctrl-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+    /* ── Resumen estadístico ──────────────────────────────────── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px; margin-bottom: 20px;
+    }
+    @media (max-width:900px){ .summary-grid{ grid-template-columns: repeat(3,1fr); } }
+    @media (max-width:600px){ .summary-grid{ grid-template-columns: 1fr 1fr; } }
+    .s-stat {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 14px; text-align: center;
+    }
+    .s-lbl {
+      display: block; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .5px;
+      color: var(--text-muted); margin-bottom: 4px;
+    }
+    .s-val { display: block; font-size: 20px; font-weight: 800; color: var(--text); }
+    .s-stat.hi .s-val, .s-stat.lo .s-val { color: #dc2626; }
+    .s-stat.cl .s-val { color: #2563eb; }
+    .s-stat.ok .s-val { color: var(--success); }
+    .s-stat.dim { opacity: .55; }
+
+    /* ── Tabla SPC ────────────────────────────────────────────── */
+    .spc-scroll {
+      overflow-x: auto;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      margin-bottom: 12px; max-height: 560px; overflow-y: auto;
+    }
+    .spc-table {
+      border-collapse: collapse; min-width: 100%;
+      font-size: 13px; background: var(--card);
+    }
+    /* Cabecera */
+    .spc-table thead tr { background: #1e3a5f; }
+    .spc-table thead th {
+      padding: 8px 6px; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .4px; color: #cbd5e1;
+      border: 1px solid #2d4a6e; white-space: nowrap; text-align: center;
+      position: sticky; top: 0; z-index: 2;
+    }
+    .spc-table thead th.th-sg   { background: #162d4a; color: #94a3b8; min-width: 46px; }
+    .spc-table thead th.th-x    { min-width: 82px; }
+    .spc-table thead th.th-calc { background: #1a3354; color: #7dd3fc; min-width: 82px; }
+    .spc-table thead th.th-del  { background: #162d4a; width: 36px; }
+
+    /* Cuerpo */
+    .spc-table tbody tr { transition: background .08s; }
+    .spc-table tbody tr:hover { background: #f8fafc; }
+    .spc-table tbody tr.row-ok      td.td-sg { background:#f0fdf4; color:var(--success); font-weight:700; }
+    .spc-table tbody tr.row-partial td.td-sg { background:#fffbeb; color:#b45309; }
+    .spc-table td { border: 1px solid #e2e8f0; padding: 0; }
+    td.td-sg {
+      text-align: center; padding: 0 8px; min-width: 46px;
+      background: #f8fafc; color: var(--text-muted);
+      font-size: 12px; font-weight: 600; border-right: 2px solid #cbd5e1;
+    }
+    td.td-calc {
+      text-align: right; padding: 2px 10px; min-width: 82px;
+      background: #f0f4f8; color: var(--text-sec);
+      font-size: 12px; border-left: 1px solid #cbd5e1; white-space: nowrap;
+    }
+    td.td-calc.ooc { background: #fff1f2 !important; color: #dc2626 !important; font-weight: 700; }
+    td.td-del {
+      text-align: center; padding: 2px 4px;
+      background: #f8fafc; border-left: 2px solid #cbd5e1;
+    }
+    /* Input */
+    .spc-input {
+      display: block; width: 82px; border: none; background: transparent;
+      padding: 5px 8px; text-align: right; font-size: 13px; color: var(--text);
+      outline: none; box-sizing: border-box;
+    }
+    .spc-input:focus {
+      background: #eff6ff;
+      box-shadow: inset 0 0 0 2px #3b82f6;
+      border-radius: 2px; position: relative; z-index: 1;
+    }
+    .spc-input.bad { background: #fff1f2 !important; color: #dc2626; }
+
+    /* Footer de tabla */
+    .spc-table tfoot td {
+      padding: 6px 14px; background: #f0f4f8;
+      border-top: 2px solid #cbd5e1;
+      font-size: 12px; color: var(--text-muted);
+    }
+
+    /* ── Aviso de datos existentes ───────────────────────────── */
+    .existing-notice {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; margin-bottom: 20px;
+      background: #f8fafc; border: 1px solid var(--border);
+      border-radius: var(--radius); font-size: 12px; color: var(--text-sec);
+    }
+    .existing-notice a { font-weight: 600; }
+
+    /* ── OOC badge en resumen ─────────────────────────────────── */
+    .ooc-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: 700;
+    }
+    .ooc-badge.none { background: var(--success-bg); color: var(--success); }
+    .ooc-badge.some { background: var(--danger-bg);  color: var(--danger);  }
+    .ooc-badge.nodata { background: #f1f5f9; color: var(--text-muted); }
+  </style>
+</head>
+<body class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="main-content">
+    <div class="top-bar">
+      <div>
+        <div class="top-bar-title" id="top-bar-title">Entrada de Datos</div>
+        <span class="top-bar-breadcrumb" id="process-crumb"></span>
+      </div>
+      <div class="top-bar-right">
+        <span class="sub-badge" id="sub-status-badge">...</span>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ── Controles ───────────────────────────────────────── -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="ctrl-bar">
+          <label style="margin:0;white-space:nowrap;font-weight:600">Proceso:</label>
+          <select id="process-select" onchange="onProcessChange()" style="min-width:220px">
+            <option value="">— Selecciona —</option>
+          </select>
+
+          <div class="ctrl-sep"></div>
+
+          <label style="margin:0;white-space:nowrap;font-weight:600">
+            n (tamaño de subgrupo):
+          </label>
+          <select id="n-select" onchange="onChangeN()" style="width:62px">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5" selected>5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+          </select>
+
+          <div class="ctrl-sep"></div>
+
+          <button class="btn btn-secondary btn-sm" onclick="clearTable()" title="Limpiar tabla">
+            ↺ Nuevo ingreso
+          </button>
+          <label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0"
+                 title="Importar CSV con columnas value o X1,X2,...">
+            ⬆ Importar CSV
+            <input type="file" id="csv-file" accept=".csv,.txt" style="display:none"
+                   onchange="importCSV(this)">
+          </label>
+
+          <div class="ctrl-sep"></div>
+
+          <button class="btn btn-primary btn-sm" id="btn-save" onclick="saveData()">
+            💾 Guardar en proceso
+          </button>
+        </div>
+        <div id="save-msg" style="padding:0 20px 10px;display:none"></div>
+      </div>
+
+      <div id="content-area" style="display:none">
+
+        <!-- Aviso de datos existentes -->
+        <div id="existing-notice" class="existing-notice" style="display:none">
+          <span id="existing-text"></span>
+          <a id="link-historial" href="/measurements.html" style="margin-left:auto">
+            Ver historial →
+          </a>
+          <a id="link-cc"  href="/control-chart.html" style="margin-left:8px">
+            Carta de control →
+          </a>
+          <a id="link-cap" href="/capability.html" style="margin-left:8px">
+            Capacidad →
+          </a>
+        </div>
+
+        <!-- ── Resumen estadístico ────────────────────────────── -->
+        <div class="summary-grid" id="summary-grid">
+          <!-- Fila 1: estadísticos del proceso -->
+          <div class="s-stat ok">
+            <span class="s-lbl">X̄̄ (Media global)</span>
+            <span class="s-val" id="s-xbarbar">—</span>
+          </div>
+          <div class="s-stat">
+            <span class="s-lbl">R̄ (Rango medio)</span>
+            <span class="s-val" id="s-rbar">—</span>
+          </div>
+          <div class="s-stat">
+            <span class="s-lbl">σ̂ = R̄/d₂</span>
+            <span class="s-val" id="s-sigma">—</span>
+          </div>
+          <div class="s-stat">
+            <span class="s-lbl">k (subgrupos completos)</span>
+            <span class="s-val" id="s-k">0</span>
+          </div>
+          <div class="s-stat" style="grid-row:span 1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px">
+            <span class="s-lbl">Estado de la carta</span>
+            <span id="s-ooc-badge" class="ooc-badge nodata">Sin datos</span>
+          </div>
+
+          <!-- Fila 2: límites de X̄ -->
+          <div class="s-stat hi">
+            <span class="s-lbl">LCS (X̄)</span>
+            <span class="s-val" id="s-uclx">—</span>
+          </div>
+          <div class="s-stat cl">
+            <span class="s-lbl">LC (X̄)</span>
+            <span class="s-val" id="s-clx">—</span>
+          </div>
+          <div class="s-stat lo">
+            <span class="s-lbl">LCI (X̄)</span>
+            <span class="s-val" id="s-lclx">—</span>
+          </div>
+          <!-- Fila 2: límites de R -->
+          <div class="s-stat hi">
+            <span class="s-lbl">LCS (R)</span>
+            <span class="s-val" id="s-uclr">—</span>
+          </div>
+          <div class="s-stat cl">
+            <span class="s-lbl">LC (R) = R̄</span>
+            <span class="s-val" id="s-clr">—</span>
+          </div>
+        </div>
+
+        <!-- ── Tabla de datos ──────────────────────────────────── -->
+        <div class="card">
+          <div class="card-header" style="padding:10px 16px">
+            <div class="card-title" style="font-size:13px" id="table-title">
+              Tabla de mediciones por subgrupo
+            </div>
+            <span style="font-size:11px;color:var(--text-muted)" id="table-hint">
+              Tab / Enter para navegar · Ctrl+V para pegar desde Excel
+            </span>
+          </div>
+
+          <div class="spc-scroll">
+            <table class="spc-table" id="spc-table">
+              <thead id="spc-thead"></thead>
+              <tbody id="spc-tbody"></tbody>
+              <tfoot id="spc-tfoot"></tfoot>
+            </table>
+          </div>
+
+          <div style="padding:10px 16px;display:flex;align-items:center;gap:10px">
+            <button class="btn btn-secondary btn-sm" onclick="addRows(5)">
+              + Agregar 5 filas
+            </button>
+            <span id="row-count" style="font-size:12px;color:var(--text-muted)"></span>
+          </div>
+        </div>
+
+      </div><!-- /content-area -->
+    </div>
+  </div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script>
+if (!requireLogin()) { /* redirected */ }
+initSidebar('data-entry');
+initTopBar('Entrada de Datos');
+
+/* ══════════════════════════════════════════════════════════════
+   CONSTANTES SPC
+══════════════════════════════════════════════════════════════ */
+const XBAR_R = {
+  2:  { A2:1.880, D3:0,     D4:3.267, d2:1.128 },
+  3:  { A2:1.023, D3:0,     D4:2.574, d2:1.693 },
+  4:  { A2:0.729, D3:0,     D4:2.282, d2:2.059 },
+  5:  { A2:0.577, D3:0,     D4:2.114, d2:2.326 },
+  6:  { A2:0.483, D3:0,     D4:2.004, d2:2.534 },
+  7:  { A2:0.419, D3:0.076, D4:1.924, d2:2.704 },
+  8:  { A2:0.373, D3:0.136, D4:1.864, d2:2.847 },
+  9:  { A2:0.337, D3:0.184, D4:1.816, d2:2.970 },
+  10: { A2:0.308, D3:0.223, D4:1.777, d2:3.078 }
+};
+
+/* ══════════════════════════════════════════════════════════════
+   ESTADO GLOBAL
+══════════════════════════════════════════════════════════════ */
+let subgroupSize = 5;
+let tableData    = [];   // Array<string[]>  — datos de la tabla
+let processId    = null;
+const INIT_ROWS  = 25;
+
+/* ══════════════════════════════════════════════════════════════
+   INICIALIZACIÓN
+══════════════════════════════════════════════════════════════ */
+async function init() {
+  const processes = await processesApi.list().catch(() => []);
+  const sel = document.getElementById('process-select');
+  processes.forEach(p =>
+    sel.appendChild(new Option(`${p.name}${p.unit ? ` (${p.unit})` : ''}`, p.id))
+  );
+  const urlPid = new URLSearchParams(location.search).get('process_id');
+  if (urlPid) { sel.value = urlPid; await onProcessChange(); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CAMBIO DE PROCESO
+══════════════════════════════════════════════════════════════ */
+async function onProcessChange() {
+  const pid = document.getElementById('process-select').value;
+  document.getElementById('content-area').style.display = pid ? 'block' : 'none';
+  if (!pid) { processId = null; return; }
+  processId = pid;
+
+  document.getElementById('process-crumb').textContent = '';
+  try {
+    const p = await processesApi.get(pid);
+    document.getElementById('process-crumb').textContent = `· ${p.name}`;
+  } catch {}
+
+  // Update quick-links
+  document.getElementById('link-historial').href = `/measurements.html?process_id=${pid}`;
+  document.getElementById('link-cc').href        = `/control-chart.html?process_id=${pid}`;
+  document.getElementById('link-cap').href       = `/capability.html?process_id=${pid}`;
+
+  clearTable(false);       // fresh empty table (no confirm)
+  await loadExistingCount(pid);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CAMBIO DE N
+══════════════════════════════════════════════════════════════ */
+function onChangeN() {
+  const newN = parseInt(document.getElementById('n-select').value);
+  if (newN === subgroupSize) return;
+
+  if (newN < subgroupSize) {
+    const hasData = tableData.some(row => row.some(v => v.trim()));
+    if (hasData && !confirm(
+      `Reducir n de ${subgroupSize} a ${newN} eliminará las columnas X${newN+1}–X${subgroupSize}. ¿Continuar?`
+    )) {
+      document.getElementById('n-select').value = subgroupSize;
+      return;
+    }
+  }
+
+  // Resize each row
+  tableData = tableData.map(row => {
+    if (row.length < newN) return [...row, ...Array(newN - row.length).fill('')];
+    return row.slice(0, newN);
+  });
+
+  subgroupSize = newN;
+  buildTable();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BUILD TABLE  (rebuild completo para cambios estructurales)
+══════════════════════════════════════════════════════════════ */
+function buildTable() {
+  renderHeader();
+  renderAllRows();
+  renderFooter();
+  updateSummary();
+  updateRowCount();
+  attachListeners();
+}
+
+function renderHeader() {
+  const xCols = Array.from({ length: subgroupSize }, (_, i) =>
+    `<th class="th-x">X<sub>${i+1}</sub></th>`
+  ).join('');
+  document.getElementById('spc-thead').innerHTML = `
+    <tr>
+      <th class="th-sg">SG</th>
+      ${xCols}
+      <th class="th-calc">X̄</th>
+      <th class="th-calc">R</th>
+      <th class="th-calc">S</th>
+      <th class="th-del"></th>
+    </tr>`;
+}
+
+function renderAllRows() {
+  document.getElementById('spc-tbody').innerHTML =
+    tableData.map((row, i) => rowHTML(row, i)).join('');
+}
+
+function rowHTML(row, i) {
+  const stats = calcRowStats(row);
+  const sg    = i + 1;
+  const rowCls = stats.complete ? 'row-ok' : stats.partial ? 'row-partial' : '';
+
+  const cells = row.map((v, j) => `
+    <td>
+      <input class="spc-input${v.trim() && isNaN(parseDecimal(v)) ? ' bad' : ''}"
+             type="text" inputmode="decimal"
+             data-row="${i}" data-col="${j}"
+             value="${escHtml(v)}"
+             autocomplete="off" spellcheck="false">
+    </td>`).join('');
+
+  return `
+    <tr data-row="${i}" class="${rowCls}">
+      <td class="td-sg">${sg}</td>
+      ${cells}
+      <td class="td-calc" id="rc-xbar-${i}">${stats.xbar != null ? stats.xbar.toFixed(4) : '—'}</td>
+      <td class="td-calc" id="rc-r-${i}">${stats.r    != null ? stats.r.toFixed(4)    : '—'}</td>
+      <td class="td-calc" id="rc-s-${i}">${stats.s    != null ? stats.s.toFixed(4)    : '—'}</td>
+      <td class="td-del">
+        <button class="btn btn-danger btn-icon btn-sm" data-del="${i}" title="Eliminar fila">✕</button>
+      </td>
+    </tr>`;
+}
+
+function renderFooter() {
+  const colspan = subgroupSize + 5; // SG + Xn + X̄ + R + S + del
+  document.getElementById('spc-tfoot').innerHTML = `
+    <tr>
+      <td colspan="${colspan}" style="text-align:center;font-style:italic">
+        Tabla de ${tableData.length} subgrupos · n = ${subgroupSize} obs. por subgrupo
+      </td>
+    </tr>`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   EVENT DELEGATION (input, keydown, paste, delete)
+══════════════════════════════════════════════════════════════ */
+function attachListeners() {
+  const tbody = document.getElementById('spc-tbody');
+
+  // Remove old listeners by replacing (clone trick)
+  const fresh = tbody.cloneNode(true);
+  tbody.parentNode.replaceChild(fresh, tbody);
+  const tb = document.getElementById('spc-tbody');
+
+  tb.addEventListener('input', e => {
+    if (!e.target.classList.contains('spc-input')) return;
+    const row = +e.target.dataset.row, col = +e.target.dataset.col;
+    tableData[row][col] = e.target.value;
+    e.target.classList.toggle('bad',
+      e.target.value.trim() !== '' && isNaN(parseDecimal(e.target.value)));
+    updateRowCalcs(row);
+    updateSummary();
+    // Auto-expand when typing in last row
+    if (row === tableData.length - 1 && e.target.value.trim()) addRows(5, false);
+  });
+
+  tb.addEventListener('keydown', e => {
+    if (!e.target.classList.contains('spc-input')) return;
+    const row = +e.target.dataset.row, col = +e.target.dataset.col;
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      col + 1 < subgroupSize ? focusCell(row, col + 1) : focusCell(row + 1, 0);
+    } else if (e.key === 'Enter') {
+      e.preventDefault(); focusCell(row + 1, col);
+    } else if (e.key === 'ArrowRight' && caretAtEnd(e.target)) {
+      if (col + 1 < subgroupSize) { e.preventDefault(); focusCell(row, col + 1); }
+    } else if (e.key === 'ArrowLeft' && caretAtStart(e.target)) {
+      if (col > 0) { e.preventDefault(); focusCell(row, col - 1); }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault(); focusCell(row + 1, col);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); focusCell(row - 1, col);
+    }
+  });
+
+  tb.addEventListener('paste', e => {
+    if (!e.target.classList.contains('spc-input')) return;
+    e.preventDefault();
+    const startRow = +e.target.dataset.row, startCol = +e.target.dataset.col;
+    const text = e.clipboardData.getData('text');
+    // Tab-separated (Excel) or space/semicolon-separated
+    const rawRows = text.replace(/\r/g, '').split('\n').filter(l => l.trim());
+    let changed = [];
+    rawRows.forEach((line, ri) => {
+      const targetRow = startRow + ri;
+      // Ensure rows exist
+      while (tableData.length <= targetRow)
+        tableData.push(Array(subgroupSize).fill(''));
+      const cells = line.split(/\t|;/).map(v => v.trim());
+      cells.forEach((val, ci) => {
+        const targetCol = startCol + ci;
+        if (targetCol >= subgroupSize) return;
+        tableData[targetRow][targetCol] = val;
+        const inp = document.querySelector(
+          `input[data-row="${targetRow}"][data-col="${targetCol}"]`);
+        if (inp) {
+          inp.value = val;
+          inp.classList.toggle('bad', val !== '' && isNaN(parseDecimal(val)));
+        }
+      });
+      changed.push(targetRow);
+    });
+    // If new rows were added rebuild, else update affected rows
+    if (tableData.length > document.querySelectorAll('#spc-tbody tr').length) {
+      buildTable();
+    } else {
+      changed.forEach(r => updateRowCalcs(r));
+      updateSummary(); updateRowCount();
+    }
+  });
+
+  tb.addEventListener('click', e => {
+    const btn = e.target.closest('[data-del]');
+    if (!btn) return;
+    deleteRow(+btn.dataset.del);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CÁLCULOS POR FILA
+══════════════════════════════════════════════════════════════ */
+function calcRowStats(row) {
+  const vals = row.map(v => v.trim() ? parseDecimal(v) : NaN);
+  const valid = vals.filter(v => !isNaN(v));
+  if (valid.length === 0) return { complete: false, partial: false };
+  const complete = valid.length === subgroupSize;
+  if (!complete) return { complete: false, partial: true };
+  const xbar = valid.reduce((a, b) => a + b, 0) / valid.length;
+  const r    = Math.max(...valid) - Math.min(...valid);
+  const s    = valid.length >= 2
+    ? Math.sqrt(valid.reduce((s, v) => s + (v - xbar) ** 2, 0) / (valid.length - 1))
+    : 0;
+  return { complete: true, partial: false, xbar, r, s };
+}
+
+function updateRowCalcs(i) {
+  const row = tableData[i];
+  if (!row) return;
+  const stats = calcRowStats(row);
+  const tr    = document.querySelector(`tr[data-row="${i}"]`);
+  if (!tr) return;
+
+  tr.className = stats.complete ? 'row-ok' : stats.partial ? 'row-partial' : '';
+
+  const xbarCell = document.getElementById(`rc-xbar-${i}`);
+  const rCell    = document.getElementById(`rc-r-${i}`);
+  const sCell    = document.getElementById(`rc-s-${i}`);
+  if (!xbarCell) return;
+
+  xbarCell.textContent = stats.xbar != null ? stats.xbar.toFixed(4) : '—';
+  rCell.textContent    = stats.r    != null ? stats.r.toFixed(4)    : '—';
+  sCell.textContent    = stats.s    != null ? stats.s.toFixed(4)    : '—';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CÁLCULOS DE RESUMEN
+══════════════════════════════════════════════════════════════ */
+function calcSummaryStats() {
+  const complete = tableData
+    .map(row => calcRowStats(row))
+    .filter(s => s.complete);
+
+  const k = complete.length;
+  if (k < 2) return null;
+
+  const xbars  = complete.map(s => s.xbar);
+  const ranges = complete.map(s => s.r);
+  const xbarbar = xbars.reduce((a, b) => a + b, 0) / k;
+  const rbar    = ranges.reduce((a, b) => a + b, 0) / k;
+  const c       = XBAR_R[subgroupSize] || XBAR_R[5];
+  const sigma   = rbar / c.d2;
+
+  return {
+    xbarbar, rbar, sigma, k,
+    uclx: xbarbar + c.A2 * rbar,
+    lclx: xbarbar - c.A2 * rbar,
+    uclr: c.D4 * rbar,
+    lclr: c.D3 * rbar
+  };
+}
+
+function updateSummary() {
+  const stats = calcSummaryStats();
+  const f = (v, d=4) => v != null ? v.toFixed(d) : '—';
+
+  if (!stats) {
+    ['s-xbarbar','s-rbar','s-sigma','s-uclx','s-clx','s-lclx','s-uclr','s-clr']
+      .forEach(id => document.getElementById(id).textContent = '—');
+    document.getElementById('s-k').textContent = tableData
+      .filter(row => calcRowStats(row).complete).length.toString();
+    const badge = document.getElementById('s-ooc-badge');
+    badge.className = 'ooc-badge nodata'; badge.textContent = 'Sin datos (k < 2)';
+    clearOOCHighlights();
+    return;
+  }
+
+  document.getElementById('s-xbarbar').textContent = f(stats.xbarbar);
+  document.getElementById('s-rbar').textContent    = f(stats.rbar);
+  document.getElementById('s-sigma').textContent   = f(stats.sigma);
+  document.getElementById('s-k').textContent       = stats.k;
+  document.getElementById('s-uclx').textContent    = f(stats.uclx);
+  document.getElementById('s-clx').textContent     = f(stats.xbarbar);
+  document.getElementById('s-lclx').textContent    = f(stats.lclx);
+  document.getElementById('s-uclr').textContent    = f(stats.uclr);
+  document.getElementById('s-clr').textContent     = f(stats.rbar);
+
+  applyOOCHighlights(stats);
+}
+
+function applyOOCHighlights(stats) {
+  let oocCount = 0;
+  tableData.forEach((row, i) => {
+    const s = calcRowStats(row);
+    if (!s.complete) return;
+    const xbarCell = document.getElementById(`rc-xbar-${i}`);
+    const rCell    = document.getElementById(`rc-r-${i}`);
+    if (!xbarCell) return;
+    const xOOC = s.xbar > stats.uclx || s.xbar < stats.lclx;
+    const rOOC = s.r    > stats.uclr;
+    xbarCell.classList.toggle('ooc', xOOC);
+    rCell.classList.toggle('ooc', rOOC);
+    if (xOOC || rOOC) oocCount++;
+  });
+  const badge = document.getElementById('s-ooc-badge');
+  badge.className = `ooc-badge ${oocCount === 0 ? 'none' : 'some'}`;
+  badge.textContent = oocCount === 0
+    ? `${stats.k} subgrupos en control`
+    : `${oocCount} señal${oocCount > 1 ? 'es' : ''} fuera de control`;
+}
+
+function clearOOCHighlights() {
+  document.querySelectorAll('.td-calc.ooc').forEach(el => el.classList.remove('ooc'));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GESTIÓN DE FILAS
+══════════════════════════════════════════════════════════════ */
+function initEmptyTable() {
+  tableData = Array.from({ length: INIT_ROWS }, () => Array(subgroupSize).fill(''));
+  buildTable();
+}
+
+function addRows(count, rebuild = true) {
+  for (let i = 0; i < count; i++)
+    tableData.push(Array(subgroupSize).fill(''));
+  if (rebuild) {
+    renderAllRows();
+    renderFooter();
+    attachListeners();
+    updateRowCount();
+  }
+}
+
+function deleteRow(i) {
+  tableData.splice(i, 1);
+  if (!tableData.length) tableData.push(Array(subgroupSize).fill(''));
+  buildTable();
+}
+
+function updateRowCount() {
+  const complete = tableData.filter(row => calcRowStats(row).complete).length;
+  document.getElementById('row-count').textContent =
+    `${tableData.length} filas · ${complete} subgrupos completos`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   NAVEGACIÓN DE CELDAS
+══════════════════════════════════════════════════════════════ */
+function focusCell(row, col) {
+  row = Math.max(0, Math.min(row, tableData.length - 1));
+  col = Math.max(0, Math.min(col, subgroupSize - 1));
+  const inp = document.querySelector(`input[data-row="${row}"][data-col="${col}"]`);
+  if (inp) { inp.focus(); inp.select(); }
+}
+
+function caretAtEnd(input)   { return input.selectionStart === input.value.length; }
+function caretAtStart(input) { return input.selectionStart === 0; }
+
+/* ══════════════════════════════════════════════════════════════
+   LIMPIAR TABLA
+══════════════════════════════════════════════════════════════ */
+function clearTable(confirm_ = true) {
+  if (confirm_) {
+    const hasData = tableData.some(row => row.some(v => v.trim()));
+    if (hasData && !confirm('¿Limpiar toda la tabla? Los datos no guardados se perderán.')) return;
+  }
+  initEmptyTable();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IMPORTAR CSV
+══════════════════════════════════════════════════════════════ */
+function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text  = e.target.result;
+    const lines = text.replace(/\r/g, '').trim().split('\n').filter(l => l.trim());
+    if (!lines.length) return;
+
+    // Detect separator
+    const sep = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
+    const firstCols = lines[0].split(sep).map(v => v.trim());
+
+    // Check if first row is a header (not numeric)
+    const isHeader = isNaN(parseDecimal(firstCols[0]));
+    const dataLines = isHeader ? lines.slice(1) : lines;
+
+    if (!dataLines.length) { alert('No se encontraron datos en el archivo.'); return; }
+
+    // Parse: detect format
+    // Format A: single "value" column → each line is one observation (no subgroups)
+    // Format B: multiple columns → each line is a subgroup
+    const firstData = dataLines[0].split(sep);
+    const colCount  = firstData.length;
+
+    let newN = colCount;
+    if (colCount === 1) {
+      // Single column: ask how many per subgroup
+      const ans = prompt(
+        `El archivo tiene 1 columna. ¿Cuántas observaciones por subgrupo?\n(Actual: n=${subgroupSize})`,
+        subgroupSize
+      );
+      const n = parseInt(ans);
+      if (!n || n < 2 || n > 10) { alert('n debe estar entre 2 y 10.'); input.value=''; return; }
+      newN = n;
+      // Group into subgroups
+      const allVals = dataLines.map(l => l.split(sep)[0].trim());
+      const rows = [];
+      for (let i = 0; i + newN <= allVals.length; i += newN) {
+        rows.push(allVals.slice(i, i + newN));
+      }
+      loadIntoTable(rows, newN);
+    } else {
+      newN = Math.min(Math.max(colCount, 2), 10);
+      const rows = dataLines.map(line =>
+        line.split(sep).slice(0, newN).map(v => v.trim())
+      );
+      loadIntoTable(rows, newN);
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function loadIntoTable(rows, n) {
+  if (n !== subgroupSize) {
+    subgroupSize = n;
+    document.getElementById('n-select').value = n;
+  }
+  tableData = rows.map(row => {
+    const r = Array(subgroupSize).fill('');
+    row.forEach((v, i) => { if (i < subgroupSize) r[i] = v; });
+    return r;
+  });
+  // Pad with empty rows
+  while (tableData.length < INIT_ROWS) tableData.push(Array(subgroupSize).fill(''));
+  buildTable();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GUARDAR DATOS
+══════════════════════════════════════════════════════════════ */
+async function saveData() {
+  const pid = document.getElementById('process-select').value;
+  const msgEl = document.getElementById('save-msg');
+  msgEl.style.display = 'none';
+
+  if (!pid) { alert('Selecciona un proceso primero.'); return; }
+
+  const completeRows = [], partialNums = [];
+  tableData.forEach((row, i) => {
+    const vals = row.map(v => v.trim() ? parseDecimal(v) : NaN);
+    const valid = vals.filter(v => !isNaN(v));
+    if (valid.length === 0) return;
+    if (valid.length === subgroupSize) {
+      completeRows.push({ index: i, values: valid });
+    } else {
+      partialNums.push(i + 1);
+    }
+  });
+
+  if (!completeRows.length && !partialNums.length) {
+    alert('La tabla está vacía. Ingresa mediciones primero.');
+    return;
+  }
+
+  let msg = `Se guardarán ${completeRows.length * subgroupSize} mediciones en `
+    + `${completeRows.length} subgrupos.`;
+  if (partialNums.length) {
+    msg += `\n\nSubgrupos INCOMPLETOS (se omitirán): ${partialNums.join(', ')}`;
+  }
+  if (!confirm(msg)) return;
+  if (!completeRows.length) { alert('No hay subgrupos completos para guardar.'); return; }
+
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+
+  try {
+    const items = completeRows.flatMap(r =>
+      r.values.map(v => ({
+        process_id:  pid,
+        value:       v,
+        subgroup_id: r.index + 1
+      }))
+    );
+    const result = await measurementsApi.createBatch(items);
+
+    msgEl.style.display = 'block';
+    msgEl.innerHTML = `
+      <div class="alert alert-success" style="margin:0">
+        <span>
+          <strong>${result.inserted}</strong> mediciones guardadas en
+          <strong>${completeRows.length}</strong> subgrupos.
+          <a href="/control-chart.html?process_id=${pid}" style="margin-left:8px">
+            Ver carta de control →
+          </a>
+          <a href="/capability.html?process_id=${pid}" style="margin-left:8px">
+            Ver capacidad →
+          </a>
+        </span>
+      </div>`;
+
+    await loadExistingCount(pid);
+  } catch (err) {
+    msgEl.style.display = 'block';
+    msgEl.innerHTML = `<div class="alert alert-error" style="margin:0"><span>${escHtml(err.message)}</span></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Guardar en proceso';
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DATOS EXISTENTES
+══════════════════════════════════════════════════════════════ */
+async function loadExistingCount(pid) {
+  try {
+    const r = await measurementsApi.list(pid, 1, 0);
+    const notice = document.getElementById('existing-notice');
+    const text   = document.getElementById('existing-text');
+    if (r.total > 0) {
+      const sgSet = new Set();
+      const sample = await measurementsApi.list(pid, 500, 0);
+      sample.data.forEach(m => { if (m.subgroup_id != null) sgSet.add(m.subgroup_id); });
+      text.textContent = `Este proceso ya tiene ${r.total} mediciones guardadas`
+        + (sgSet.size ? ` en ${sgSet.size} subgrupos.` : '.');
+      notice.style.display = 'flex';
+    } else {
+      notice.style.display = 'none';
+    }
+  } catch { document.getElementById('existing-notice').style.display = 'none'; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ARRANQUE
+══════════════════════════════════════════════════════════════ */
+init();
+</script>
+</body>
+</html>

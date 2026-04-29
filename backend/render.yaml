@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: spc-saas-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: node src/app.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+databases:
+  - name: spc-saas-db
+    databaseName: spc_saas
+    user: spc_user
+    plan: free

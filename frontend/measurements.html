@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Historial de Datos — SPC SaaS</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .meas-count { font-size: 11px; color: var(--text-muted); }
+    .info-banner {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 14px 18px; margin-bottom: 20px;
+      background: #f8fafc; border: 1px solid var(--border);
+      border-radius: var(--radius); font-size: 13px; color: var(--text-sec);
+    }
+    .info-banner-icon { font-size: 20px; flex-shrink: 0; }
+    .info-links { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+  </style>
+</head>
+<body class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="main-content">
+    <div class="top-bar">
+      <div>
+        <div class="top-bar-title" id="top-bar-title">Historial de Datos</div>
+        <span class="top-bar-breadcrumb" id="process-name-crumb"></span>
+      </div>
+      <div class="top-bar-right">
+        <span class="sub-badge" id="sub-status-badge">...</span>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- Información contextual -->
+      <div class="info-banner">
+        <div>
+          <div style="font-weight:600;margin-bottom:4px">Gestión de datos históricos</div>
+          <div>
+            Para ingresar datos nuevos y ver los resultados en el mismo flujo,
+            ve directamente al módulo de análisis correspondiente.
+          </div>
+          <div class="info-links">
+            <a href="/control-chart.html" class="btn btn-sm btn-secondary">
+              Cartas de Control — toma de datos + gráficos
+            </a>
+            <a href="/capability.html" class="btn btn-sm btn-secondary">
+              Capacidad — toma de datos + Cp / Cpk
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selector de proceso -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-body" style="padding:14px 20px">
+          <div class="flex-center" style="gap:12px;flex-wrap:wrap">
+            <label style="margin:0;white-space:nowrap">Proceso:</label>
+            <select id="process-select" onchange="onProcessChange()" style="min-width:240px">
+              <option value="">— Selecciona un proceso —</option>
+            </select>
+            <span id="process-specs" style="font-size:12px;color:var(--text-sec)"></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="msg"></div>
+
+      <div id="content-area" class="hidden">
+
+        <!-- Historial de mediciones -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Mediciones registradas</div>
+            <span class="meas-count" id="meas-count"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Valor</th>
+                  <th>Subgrupo</th>
+                  <th>Fecha / Hora</th>
+                  <th>Registrado por</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="meas-tbody">
+                <tr><td colspan="6" class="text-center"
+                  style="padding:30px;color:var(--text-muted)">Selecciona un proceso</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-body" style="padding:12px 20px;border-top:1px solid var(--border)">
+            <div class="flex-center" style="gap:10px">
+              <button class="btn btn-secondary btn-sm" id="btn-prev"
+                      onclick="prevPage()" disabled>← Anterior</button>
+              <span id="page-info" style="font-size:12px;color:var(--text-sec)"></span>
+              <button class="btn btn-secondary btn-sm" id="btn-next"
+                      onclick="nextPage()" disabled>Siguiente →</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  if (!requireLogin()) { /* redirected */ }
+  initSidebar('measurements');
+  initTopBar('Historial de Datos');
+
+  let currentProcessId = null;
+  let currentProcess   = null;
+  let measData         = [];
+  let total            = 0;
+  let page             = 0;
+  const PAGE_SIZE      = 50;
+
+  async function init() {
+    try {
+      const processes = await processesApi.list();
+      const sel = document.getElementById('process-select');
+      processes.forEach(p =>
+        sel.appendChild(new Option(`${p.name}${p.unit ? ` (${p.unit})` : ''}`, p.id))
+      );
+      const urlPid = new URLSearchParams(location.search).get('process_id');
+      if (urlPid) { sel.value = urlPid; onProcessChange(); }
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+    }
+  }
+
+  async function onProcessChange() {
+    const pid = document.getElementById('process-select').value;
+    if (!pid) {
+      document.getElementById('content-area').classList.add('hidden');
+      return;
+    }
+    currentProcessId = pid;
+    page = 0;
+    document.getElementById('content-area').classList.remove('hidden');
+
+    // Update quick-links with process_id
+    document.querySelectorAll('.info-links a').forEach(a => {
+      const base = a.getAttribute('href').split('?')[0];
+      a.setAttribute('href', `${base}?process_id=${pid}`);
+    });
+
+    try {
+      currentProcess = await processesApi.get(pid);
+      document.getElementById('process-name-crumb').textContent = `· ${currentProcess.name}`;
+      const specs = [
+        currentProcess.lsl     != null ? `LSI: ${currentProcess.lsl}`         : '',
+        currentProcess.nominal != null ? `Nominal: ${currentProcess.nominal}` : '',
+        currentProcess.usl     != null ? `LSE: ${currentProcess.usl}`         : ''
+      ].filter(Boolean).join('  |  ');
+      document.getElementById('process-specs').textContent =
+        specs ? `[${specs}] ${currentProcess.unit || ''}` : '';
+    } catch {}
+
+    await loadMeasurements();
+  }
+
+  async function loadMeasurements() {
+    if (!currentProcessId) return;
+    try {
+      const result = await measurementsApi.list(currentProcessId, PAGE_SIZE, page * PAGE_SIZE);
+      measData = result.data;
+      total    = result.total;
+      renderTable();
+      updatePagination();
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+    }
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById('meas-tbody');
+    document.getElementById('meas-count').textContent = `${total} mediciones en total`;
+
+    if (!measData.length) {
+      tbody.innerHTML = `<tr><td colspan="6">
+        <div class="empty-state">
+          <div class="empty-title">Sin mediciones</div>
+          <div class="empty-sub">
+            Ingresa datos desde
+            <a href="/control-chart.html?process_id=${currentProcessId}">Cartas de Control</a>
+            o
+            <a href="/capability.html?process_id=${currentProcessId}">Capacidad</a>.
+          </div>
+        </div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = measData.map((m, i) => `
+      <tr>
+        <td style="color:var(--text-muted)">${page * PAGE_SIZE + i + 1}</td>
+        <td><strong>${Number(m.value).toFixed(4)}</strong></td>
+        <td>${m.subgroup_id != null
+          ? `<span class="badge badge-blue">SG ${m.subgroup_id}</span>`
+          : '<span class="text-muted">—</span>'}</td>
+        <td style="font-size:12px">${formatDate(m.recorded_at)}</td>
+        <td style="font-size:12px;color:var(--text-sec)">${escHtml(m.recorded_by_name || '—')}</td>
+        <td><button class="btn btn-danger btn-sm btn-icon"
+              onclick="deleteMeasurement('${m.id}')" title="Eliminar">✕</button></td>
+      </tr>`).join('');
+  }
+
+  function updatePagination() {
+    const pages = Math.ceil(total / PAGE_SIZE);
+    document.getElementById('page-info').textContent =
+      `Página ${page + 1} de ${Math.max(1, pages)}`;
+    document.getElementById('btn-prev').disabled = page === 0;
+    document.getElementById('btn-next').disabled = (page + 1) * PAGE_SIZE >= total;
+  }
+
+  function prevPage() { if (page > 0)                   { page--; loadMeasurements(); } }
+  function nextPage() { if ((page+1)*PAGE_SIZE < total) { page++; loadMeasurements(); } }
+
+  async function deleteMeasurement(id) {
+    if (!confirm('¿Eliminar esta medición?')) return;
+    try {
+      await measurementsApi.delete(id);
+      await loadMeasurements();
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

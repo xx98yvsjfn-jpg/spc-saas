@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPC SaaS — Acceso</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .auth-page-info {
+      margin-top: 20px;
+      padding: 12px 16px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #1d4ed8;
+    }
+    .dev-note {
+      font-size: 11px;
+      color: #94a3b8;
+      text-align: center;
+      margin-top: 14px;
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+  </style>
+</head>
+<body class="auth-page">
+<div class="auth-box">
+  <div class="auth-logo">
+    <div class="logo-icon">SPC</div>
+    <h1>Control Estadístico de Procesos</h1>
+    <p>Plataforma profesional SaaS para análisis de capacidad</p>
+  </div>
+
+  <div id="msg-container"></div>
+
+  <div class="auth-tabs">
+    <div class="auth-tab active" id="tab-login" onclick="switchTab('login')">Iniciar sesión</div>
+    <div class="auth-tab" id="tab-register" onclick="switchTab('register')">Registrar empresa</div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="panel-login" class="panel active">
+    <form id="form-login" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label>Correo electrónico</label>
+        <input type="email" id="login-email" placeholder="usuario@empresa.com" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%" id="btn-login">
+        Iniciar sesión
+      </button>
+    </form>
+
+    <div class="auth-page-info" id="dev-note" style="display:none">
+      <strong>Modo desarrollo:</strong> Si aún no tienes suscripción activa, entra al dashboard y usa el botón "Activar demo".
+    </div>
+  </div>
+
+  <!-- REGISTRO -->
+  <div id="panel-register" class="panel">
+    <form id="form-register" onsubmit="handleRegister(event)">
+      <div class="form-group">
+        <label>Nombre de la empresa</label>
+        <input type="text" id="reg-company" placeholder="ACME Manufactura S.A." required>
+      </div>
+      <div class="form-group">
+        <label>Nombre del administrador</label>
+        <input type="text" id="reg-name" placeholder="Juan Pérez" required>
+      </div>
+      <div class="form-group">
+        <label>Correo electrónico</label>
+        <input type="email" id="reg-email" placeholder="admin@empresa.com" required>
+      </div>
+      <div class="form-group">
+        <label>Contraseña <span class="text-muted">(mín. 8 caracteres)</span></label>
+        <input type="password" id="reg-password" placeholder="••••••••" required minlength="8">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%" id="btn-register">
+        Crear cuenta y continuar al pago
+      </button>
+    </form>
+    <p class="dev-note">Al registrarte serás redirigido a Stripe para activar tu suscripción.</p>
+  </div>
+</div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script>
+  // Si ya está logueado, redirigir al dashboard
+  if (Auth.isLoggedIn()) {
+    window.location.href = '/dashboard.html';
+  }
+
+  // Mostrar mensajes de la URL
+  const params = new URLSearchParams(location.search);
+  const msgEl  = document.getElementById('msg-container');
+
+  if (params.get('session') === 'expired') {
+    showAlert(msgEl, 'Tu sesión ha expirado. Por favor vuelve a iniciar sesión.', 'warning');
+  }
+  if (params.get('checkout') === 'success') {
+    showAlert(msgEl, 'Pago completado. Tu suscripción está siendo activada. Inicia sesión para continuar.', 'success');
+  }
+  if (params.get('checkout') === 'canceled') {
+    showAlert(msgEl, 'El proceso de pago fue cancelado. Puedes intentarlo de nuevo desde el dashboard.', 'warning');
+  }
+  if (params.get('subscription') === 'inactive' || params.get('subscription') === 'past_due') {
+    showAlert(msgEl, 'Tu suscripción está inactiva o vencida. Por favor renueva tu plan para continuar.', 'error');
+  }
+  if (params.get('register') === '1') {
+    switchTab('register');
+  }
+
+  function switchTab(tab) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    document.getElementById(`panel-${tab}`).classList.add('active');
+    msgEl.innerHTML = '';
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    const btn   = document.getElementById('btn-login');
+    const email = document.getElementById('login-email').value.trim();
+    const pass  = document.getElementById('login-password').value;
+
+    btn.disabled = true;
+    btn.textContent = 'Verificando...';
+    msgEl.innerHTML = '';
+
+    try {
+      const data = await authApi.login(email, pass);
+      if (data.company.subscription_status !== 'active') {
+        // Mostrar nota de modo dev
+        document.getElementById('dev-note').style.display = 'block';
+      }
+      window.location.href = '/dashboard.html';
+    } catch (err) {
+      showAlert(msgEl, err.message || 'Error al iniciar sesión.', 'error');
+      btn.disabled    = false;
+      btn.textContent = 'Iniciar sesión';
+    }
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-register');
+    const payload = {
+      company_name: document.getElementById('reg-company').value.trim(),
+      name:         document.getElementById('reg-name').value.trim(),
+      email:        document.getElementById('reg-email').value.trim(),
+      password:     document.getElementById('reg-password').value
+    };
+
+    if (!payload.company_name || !payload.name) {
+      return showAlert(msgEl, 'Por favor completa todos los campos.', 'error');
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Creando cuenta...';
+    msgEl.innerHTML = '';
+
+    try {
+      await authApi.register(payload);
+      // Intentar crear sesión de Stripe Checkout
+      try {
+        const checkout = await billingApi.checkout();
+        window.location.href = checkout.url;
+      } catch {
+        // Si Stripe no está configurado (dev), ir al dashboard
+        window.location.href = '/dashboard.html';
+      }
+    } catch (err) {
+      showAlert(msgEl, err.message || 'Error al registrar la empresa.', 'error');
+      btn.disabled    = false;
+      btn.textContent = 'Crear cuenta y continuar al pago';
+    }
+  }
+</script>
+</body>
+</html>

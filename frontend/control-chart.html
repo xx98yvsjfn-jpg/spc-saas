@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cartas de Control — SPC SaaS</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <style>
+    /* ── Paneles de entrada de datos ────────────────────────── */
+    .data-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 20px; cursor: pointer; user-select: none;
+      background: #eff6ff; border-radius: var(--radius);
+    }
+    .data-hdr.open {
+      border-radius: var(--radius) var(--radius) 0 0;
+      border-bottom: 1px solid #bfdbfe;
+    }
+    .data-hdr-left { display: flex; align-items: center; gap: 10px; }
+    .data-title { font-size: 14px; font-weight: 700; color: #1e40af; }
+    .data-count-pill {
+      padding: 2px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 600;
+      background: #dbeafe; color: #1d4ed8;
+    }
+    .data-arrow { color: #60a5fa; font-size: 12px; transition: transform .2s; }
+    .data-body { padding: 18px 20px; }
+    .input-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 800px) { .input-panel { grid-template-columns: 1fr; } }
+    .panel-sub { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+    .lbl-req  { color: var(--danger); font-size: 11px; font-weight: 700; }
+
+    /* ── Carta ─────────────────────────────────────────────── */
+    .chart-panel    { height: 280px; }
+    .chart-panel-sm { height: 180px; }
+    .sim-panel {
+      margin-top: 12px; padding: 10px 14px;
+      background: #eff6ff; border: 1px solid #bfdbfe;
+      border-radius: var(--radius);
+    }
+    .sim-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700;
+      background: #fef3c7; color: #92400e; white-space: nowrap;
+    }
+    .limits-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px;
+    }
+    .limit-box {
+      background: #f8fafc; border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 14px; text-align: center;
+    }
+    .limit-box .val { font-size: 18px; font-weight: 800; }
+    .limit-box .lbl {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .4px; color: var(--text-muted); margin-top: 2px;
+    }
+    .lcs { color: #dc2626; }
+    .lc  { color: #2563eb; }
+    .lci { color: #dc2626; }
+  </style>
+</head>
+<body class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="main-content">
+    <div class="top-bar">
+      <div>
+        <div class="top-bar-title" id="top-bar-title">Cartas de Control</div>
+        <span class="top-bar-breadcrumb" id="process-crumb"></span>
+      </div>
+      <div class="top-bar-right">
+        <span class="sub-badge" id="sub-status-badge">...</span>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ── Selector ───────────────────────────────────────── -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-body" style="padding:14px 20px">
+          <div class="flex-center" style="gap:14px;flex-wrap:wrap">
+            <div class="flex-center" style="gap:8px">
+              <label style="margin:0;white-space:nowrap">Proceso:</label>
+              <select id="process-select" onchange="onSelectionChange()" style="min-width:220px">
+                <option value="">— Selecciona —</option>
+              </select>
+            </div>
+            <div class="flex-center" style="gap:8px">
+              <label style="margin:0;white-space:nowrap">Tipo de carta:</label>
+              <select id="chart-type" onchange="onSelectionChange()">
+                <option value="imr">I-MR (Individuales y Rango Móvil)</option>
+                <option value="xbar_r">X̄-R (Media y Rango)</option>
+                <option value="xbar_s">X̄-S (Media y Desv. Estándar)</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" onclick="loadChart()">Calcular</button>
+          </div>
+
+          <!-- Simulación de subgrupos (X̄-R / X̄-S) -->
+          <div id="simulate-panel" class="sim-panel hidden">
+            <div class="flex-center" style="gap:16px;flex-wrap:wrap">
+              <label class="flex-center"
+                     style="gap:7px;cursor:pointer;margin:0;font-weight:600;font-size:13px;color:#1d4ed8">
+                <input type="checkbox" id="simulate-toggle" onchange="onSimulateToggle()">
+                Simular subgrupos automáticamente
+              </label>
+              <div id="simulate-controls" class="flex-center hidden" style="gap:10px">
+                <label style="margin:0;font-size:13px;color:var(--text-sec)">Tamaño n:</label>
+                <select id="simulate-n" onchange="onSimulateNChange()" style="width:72px">
+                  <option value="2">2</option><option value="3">3</option>
+                  <option value="4">4</option><option value="5" selected>5</option>
+                  <option value="6">6</option><option value="7">7</option>
+                  <option value="8">8</option><option value="9">9</option>
+                  <option value="10">10</option>
+                </select>
+                <span id="simulate-info" style="font-size:11px;color:var(--text-muted)"></span>
+              </div>
+            </div>
+            <div style="font-size:11px;color:#3b82f6;margin-top:6px">
+              Agrupa mediciones en orden secuencial: obs. 1–n → SG 1, obs. n+1–2n → SG 2, etc.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Toma de datos (colapsible) ──────────────────────── -->
+      <div id="data-card" class="card" style="display:none;margin-bottom:20px;overflow:hidden">
+        <div id="data-hdr" class="data-hdr" onclick="toggleData()">
+          <div class="data-hdr-left">
+            <span class="data-title">Toma de datos</span>
+            <span id="meas-count-pill" class="data-count-pill">0 mediciones</span>
+          </div>
+          <span id="data-arrow" class="data-arrow">▶</span>
+        </div>
+        <div id="data-body" style="display:none">
+          <div class="data-body">
+            <div id="data-msg" style="margin-bottom:10px"></div>
+            <div class="input-panel">
+
+              <!-- Manual -->
+              <div>
+                <div class="panel-sub">Ingreso manual</div>
+                <div class="form-group">
+                  <label>Valores <span class="text-muted">(uno por línea, coma o punto y coma)</span></label>
+                  <textarea id="manual-values" rows="5"
+                    placeholder="499.2&#10;501.3&#10;500.8&#10;&#10;o: 499,2; 501,3; 500,8"></textarea>
+                </div>
+                <div class="form-group">
+                  <label>
+                    ID de subgrupo
+                    <span class="lbl-req">* requerido para X̄-R / X̄-S</span>
+                  </label>
+                  <input type="number" id="manual-subgroup" min="1"
+                         placeholder="ej. 1" style="width:130px">
+                  <div class="field-hint">
+                    Número que identifica el subgrupo. Deja vacío para carta I-MR.
+                  </div>
+                </div>
+                <button class="btn btn-primary" onclick="insertManual()" id="btn-manual">
+                  Insertar mediciones
+                </button>
+              </div>
+
+              <!-- Importar CSV / Excel -->
+              <div>
+                <div class="panel-sub">Importar CSV o Excel</div>
+                <div class="form-group">
+                  <label>Archivo</label>
+                  <input type="file" id="cc-file" accept=".csv,.txt,.xlsx,.xls"
+                         style="padding:6px">
+                  <div class="field-hint">
+                    Formatos: <strong>.xlsx</strong>, <strong>.xls</strong>, <strong>.csv</strong>
+                  </div>
+                </div>
+                <div class="alert alert-info" style="font-size:12px;margin-bottom:12px">
+                  <div>
+                    <strong>X̄-R / X̄-S:</strong> columnas <code>value</code> + <code>subgroup_id</code><br>
+                    <strong>I-MR:</strong> solo columna <code>value</code><br>
+                    <code style="font-size:11px">value,subgroup_id<br>499.2,1<br>501.3,1<br>500.8,2</code>
+                  </div>
+                </div>
+                <button class="btn btn-primary" onclick="importFile()" id="btn-csv">
+                  Importar archivo
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="msg"></div>
+
+      <!-- ── Resultados de la carta ───────────────────────────── -->
+      <div id="chart-area" class="hidden">
+
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <div class="card-title" id="chart-type-label">Carta I-MR — Límites de control</div>
+            <span id="simulated-badge" class="sim-badge" style="display:none">Subgrupos simulados</span>
+          </div>
+          <div class="card-body">
+            <div class="limits-grid" id="limits-main">
+              <div class="limit-box"><div class="val lcs" id="lim-ucl">—</div><div class="lbl">LCS (Límite Superior)</div></div>
+              <div class="limit-box"><div class="val lc"  id="lim-cl">—</div><div class="lbl">LC (Línea Central)</div></div>
+              <div class="limit-box"><div class="val lci" id="lim-lcl">—</div><div class="lbl">LCI (Límite Inferior)</div></div>
+            </div>
+            <div class="limits-grid" id="limits-sec" style="display:none">
+              <div class="limit-box"><div class="val lcs" id="lim2-ucl">—</div><div class="lbl">LCS (2do gráfico)</div></div>
+              <div class="limit-box"><div class="val lc"  id="lim2-cl">—</div><div class="lbl">LC (2do gráfico)</div></div>
+              <div class="limit-box"><div class="val lci" id="lim2-lcl">—</div><div class="lbl">LCI (2do gráfico)</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <div class="chart-title" id="main-chart-title">Gráfico de Individuales</div>
+          <div class="chart-panel"><canvas id="main-chart"></canvas></div>
+        </div>
+
+        <div class="chart-wrap">
+          <div class="chart-title" id="sec-chart-title">Gráfico de Rango Móvil</div>
+          <div class="chart-panel-sm"><canvas id="sec-chart"></canvas></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Señales de causas especiales</div>
+            <span class="badge badge-danger" id="violations-count" style="display:none">0</span>
+          </div>
+          <div class="card-body" id="violations-body">
+            <div class="empty-state" style="padding:30px">
+              <div class="empty-title">Sin señales detectadas</div>
+              <div class="empty-sub">El proceso se encuentra bajo control estadístico.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px">
+          <div class="card-header"><div class="card-title">Reglas de Nelson aplicadas</div></div>
+          <div class="card-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;color:var(--text-sec)">
+              <div><strong>Regla 1:</strong> Un punto fuera de ±3σ (límites de control)</div>
+              <div><strong>Regla 2:</strong> 9 puntos consecutivos del mismo lado de la LC</div>
+              <div><strong>Regla 3:</strong> 6 puntos consecutivos en tendencia monótona</div>
+              <div><strong>Regla 4:</strong> 14 puntos alternando arriba y abajo</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/charts.js"></script>
+<script>
+  if (!requireLogin()) { /* redirected */ }
+  initSidebar('control-chart');
+  initTopBar('Cartas de Control');
+
+  let dataPanelOpen = false;
+
+  // ── Inicialización ─────────────────────────────────────────
+  async function init() {
+    try {
+      const processes = await processesApi.list();
+      const sel = document.getElementById('process-select');
+      processes.forEach(p =>
+        sel.appendChild(new Option(`${p.name}${p.unit ? ` (${p.unit})` : ''}`, p.id))
+      );
+      const urlPid  = new URLSearchParams(location.search).get('process_id');
+      const urlType = new URLSearchParams(location.search).get('type');
+      if (urlPid) {
+        sel.value = urlPid;
+        if (urlType) {
+          document.getElementById('chart-type').value = urlType;
+          if (urlType === 'xbar_r' || urlType === 'xbar_s')
+            document.getElementById('simulate-panel').classList.remove('hidden');
+        }
+        onSelectionChange();
+      }
+    } catch (err) {
+      showAlert(document.getElementById('msg'), err.message, 'error');
+    }
+  }
+
+  // ── Cambio de selector ─────────────────────────────────────
+  function onSelectionChange() {
+    const pid  = document.getElementById('process-select').value;
+    const type = document.getElementById('chart-type').value;
+
+    // Data entry card
+    if (pid) {
+      document.getElementById('data-card').style.display = 'block';
+      loadMeasCount(pid);
+    } else {
+      document.getElementById('data-card').style.display = 'none';
+    }
+
+    // Simulation panel visibility
+    const simPanel = document.getElementById('simulate-panel');
+    if (type === 'xbar_r' || type === 'xbar_s') {
+      simPanel.classList.remove('hidden');
+    } else {
+      simPanel.classList.add('hidden');
+      document.getElementById('simulate-toggle').checked = false;
+      document.getElementById('simulate-controls').classList.add('hidden');
+    }
+
+    if (pid) loadChart();
+  }
+
+  function onSimulateToggle() {
+    const checked = document.getElementById('simulate-toggle').checked;
+    document.getElementById('simulate-controls').classList[checked ? 'remove' : 'add']('hidden');
+    loadChart();
+  }
+
+  function onSimulateNChange() { loadChart(); }
+
+  // ── Toma de datos: panel colapsible ────────────────────────
+  function toggleData() {
+    dataPanelOpen = !dataPanelOpen;
+    document.getElementById('data-body').style.display = dataPanelOpen ? 'block' : 'none';
+    document.getElementById('data-hdr').classList[dataPanelOpen ? 'add' : 'remove']('open');
+    document.getElementById('data-arrow').textContent = dataPanelOpen ? '▼' : '▶';
+  }
+
+  async function loadMeasCount(pid) {
+    try {
+      const r = await measurementsApi.list(pid, 1, 0);
+      document.getElementById('meas-count-pill').textContent = `${r.total} mediciones`;
+      if (r.total === 0 && !dataPanelOpen) toggleData();
+    } catch {}
+  }
+
+  // ── Parse textarea ─────────────────────────────────────────
+  function parseTextarea(raw) {
+    const primary = raw.split(/[\n;]+/).map(s => s.trim()).filter(Boolean);
+    const nums = [], bad = [];
+    for (const entry of primary) {
+      const n = parseDecimal(entry);
+      if (!isNaN(n)) { nums.push(n); continue; }
+      for (const p of entry.split(',').map(s => s.trim()).filter(Boolean)) {
+        const n2 = parseDecimal(p);
+        if (!isNaN(n2)) nums.push(n2); else bad.push(p);
+      }
+    }
+    return { nums, bad };
+  }
+
+  // ── Insertar manual ────────────────────────────────────────
+  async function insertManual() {
+    const pid = document.getElementById('process-select').value;
+    const raw = document.getElementById('manual-values').value.trim();
+    const sg  = document.getElementById('manual-subgroup').value.trim();
+    const btn = document.getElementById('btn-manual');
+    const msg = document.getElementById('data-msg');
+
+    msg.innerHTML = '';
+    if (!pid)  return showAlert(msg, 'Selecciona un proceso primero.', 'error');
+    if (!raw)  return showAlert(msg, 'Ingresa al menos un valor.', 'error');
+
+    const { nums, bad } = parseTextarea(raw);
+    if (bad.length)  return showAlert(msg, `Valores inválidos: ${bad.join(', ')}`, 'error');
+    if (!nums.length) return showAlert(msg, 'No se encontraron valores numéricos.', 'error');
+
+    btn.disabled = true; btn.textContent = 'Insertando...';
+    try {
+      const items = nums.map(v => ({
+        process_id:  pid,
+        value:       v,
+        subgroup_id: sg ? parseInt(sg) : null
+      }));
+      const result = await measurementsApi.createBatch(items);
+      showAlert(msg,
+        `${result.inserted} medición(es) insertada(s)${sg ? ` en subgrupo ${sg}` : ''}.`, 'success');
+      document.getElementById('manual-values').value   = '';
+      document.getElementById('manual-subgroup').value = '';
+      await loadMeasCount(pid);
+      loadChart();
+    } catch (err) {
+      showAlert(msg, err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Insertar mediciones';
+    }
+  }
+
+  // ── Importar archivo ───────────────────────────────────────
+  async function importFile() {
+    const pid  = document.getElementById('process-select').value;
+    const file = document.getElementById('cc-file').files[0];
+    const btn  = document.getElementById('btn-csv');
+    const msg  = document.getElementById('data-msg');
+
+    msg.innerHTML = '';
+    if (!pid)  return showAlert(msg, 'Selecciona un proceso primero.', 'error');
+    if (!file) return showAlert(msg, 'Selecciona un archivo.', 'error');
+
+    btn.disabled = true; btn.textContent = 'Importando...';
+    try {
+      const result = await measurementsApi.importCSV(pid, file);
+      const extra  = result.errors.length ? ` Errores: ${result.errors.join('; ')}` : '';
+      showAlert(msg, `${result.inserted} de ${result.total_rows} filas importadas.${extra}`, 'success');
+      document.getElementById('cc-file').value = '';
+      await loadMeasCount(pid);
+      loadChart();
+    } catch (err) {
+      showAlert(msg, err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Importar archivo';
+    }
+  }
+
+  // ── Calcular carta ─────────────────────────────────────────
+  async function loadChart() {
+    const pid  = document.getElementById('process-select').value;
+    const type = document.getElementById('chart-type').value;
+    const msg  = document.getElementById('msg');
+    if (!pid) return;
+    msg.innerHTML = '';
+
+    const simEnabled = document.getElementById('simulate-toggle')?.checked;
+    const simN = simEnabled ? parseInt(document.getElementById('simulate-n').value) : null;
+
+    try {
+      const result = await analysisApi.controlChart(pid, type, simN);
+      renderChart(result);
+      document.getElementById('process-crumb').textContent = `· ${result.process.name}`;
+      document.getElementById('chart-area').classList.remove('hidden');
+    } catch (err) {
+      let errMsg = err.message;
+      if ((type === 'xbar_r' || type === 'xbar_s') && !simEnabled &&
+          err.message.toLowerCase().includes('subgrupo')) {
+        errMsg += ' — Activa "Simular subgrupos" para agrupar datos individuales.';
+        document.getElementById('simulate-panel').classList.remove('hidden');
+      }
+      showAlert(msg, errMsg, 'error');
+      document.getElementById('chart-area').classList.add('hidden');
+    }
+  }
+
+  function renderChart(result) {
+    const { chartData, violations, outOfControl, type, labels, simulated, simulate_n: simN } = result;
+    const mainKey = type === 'imr' ? 'i' : 'xbar';
+    const secKey  = type === 'imr' ? 'mr' : type === 'xbar_r' ? 'r' : 's';
+    const main    = chartData[mainKey];
+    const sec     = chartData[secKey];
+
+    const badge = document.getElementById('simulated-badge');
+    badge.style.display = simulated ? 'inline-flex' : 'none';
+    if (simulated && simN) {
+      badge.textContent = `Subgrupos simulados — n = ${simN}`;
+      document.getElementById('simulate-info').textContent =
+        `${main.points.length} subgrupos × ${simN} obs.`;
+    }
+
+    const typeLabels = {
+      imr:    ['Gráfico de Individuales (I)', 'Gráfico de Rango Móvil (MR)', 'Carta I-MR'],
+      xbar_r: ['Gráfico de Medias (X̄)', 'Gráfico de Rangos (R)', 'Carta X̄-R'],
+      xbar_s: ['Gráfico de Medias (X̄)', 'Gráfico de Desv. Estándar (S)', 'Carta X̄-S']
+    };
+    const [mainTitle, secTitle, cardTitle] = typeLabels[type] || typeLabels.imr;
+    document.getElementById('main-chart-title').textContent = mainTitle;
+    document.getElementById('sec-chart-title').textContent  = secTitle;
+    document.getElementById('chart-type-label').textContent = `${cardTitle} — Límites de control`;
+
+    document.getElementById('lim-ucl').textContent = formatNum(main.ucl, 4);
+    document.getElementById('lim-cl').textContent  = formatNum(main.cl,  4);
+    document.getElementById('lim-lcl').textContent = formatNum(main.lcl, 4);
+
+    if (sec) {
+      document.getElementById('limits-sec').style.display = 'grid';
+      document.getElementById('lim2-ucl').textContent = formatNum(sec.ucl, 4);
+      document.getElementById('lim2-cl').textContent  = formatNum(sec.cl,  4);
+      document.getElementById('lim2-lcl').textContent = formatNum(sec.lcl, 4);
+    } else {
+      document.getElementById('limits-sec').style.display = 'none';
+    }
+
+    renderControlChart('main-chart', chartData, outOfControl, labels);
+    renderSecondaryChart('sec-chart', chartData, labels);
+    renderViolations(violations);
+  }
+
+  function renderViolations(violations) {
+    const body  = document.getElementById('violations-body');
+    const badge = document.getElementById('violations-count');
+    if (!violations.length) {
+      badge.style.display = 'none';
+      body.innerHTML = `
+        <div class="empty-state" style="padding:30px">
+          <div class="empty-title" style="color:var(--success)">Proceso bajo control estadístico</div>
+          <div class="empty-sub">No se detectaron señales de causas especiales.</div>
+        </div>`;
+      return;
+    }
+    badge.style.display = 'inline-flex';
+    badge.textContent   = violations.length;
+    body.innerHTML = `<ul class="violations-list">${violations.map(v => `
+      <li>
+        <span class="rule-chip">${v.rule}</span>
+        <div>
+          <strong>Observación #${v.index + 1}</strong><br>
+          <span style="font-size:12px;color:var(--text-sec)">${escHtml(v.description)}</span>
+        </div>
+      </li>`).join('')}</ul>`;
+  }
+
+  init();
+</script>
+</body>
+</html>
