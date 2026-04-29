@@ -4,6 +4,8 @@ require('dotenv').config();
 const express    = require('express');
 const cors       = require('cors');
 const rateLimit  = require('express-rate-limit');
+const fs         = require('fs');
+const path       = require('path');
 
 const authRoutes         = require('./routes/auth');
 const billingRoutes      = require('./routes/billing');
@@ -67,6 +69,30 @@ app.use('/api/users',        usersRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
+// ── Setup DB (ejecuta schema.sql — protegido por SETUP_TOKEN) ─────────────
+// Uso: GET /setup-db?token=<SETUP_TOKEN>
+// Después de ejecutarlo, elimina o comenta este endpoint.
+app.get('/setup-db', async (req, res) => {
+  const expectedToken = process.env.SETUP_TOKEN;
+  if (!expectedToken) {
+    return res.status(403).json({ error: 'SETUP_TOKEN no configurado en variables de entorno.' });
+  }
+  if (req.query.token !== expectedToken) {
+    return res.status(403).json({ error: 'Token inválido.' });
+  }
+
+  try {
+    const schemaPath = path.join(__dirname, 'db', 'schema.sql');
+    const sql = fs.readFileSync(schemaPath, 'utf8');
+    const db = require('./db');
+    await db.query(sql);
+    res.json({ ok: true, message: 'Schema aplicado correctamente. Ahora elimina SETUP_TOKEN del entorno.' });
+  } catch (err) {
+    console.error('Error en /setup-db:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── 404 para rutas /api no existentes (devuelve JSON, no HTML) ────────────
 app.use('/api', (req, res) => {
