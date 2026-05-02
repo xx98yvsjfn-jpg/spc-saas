@@ -1,10 +1,10 @@
 const db = require('../db');
 
+// Feature flag — poner en true para reactivar validación de suscripción con Stripe
+const REQUIRE_SUBSCRIPTION = false;
+
 async function requireActiveSubscription(req, res, next) {
-  // TODO: reactivar en producción — validación desactivada temporalmente para desarrollo
-  if (process.env.NODE_ENV !== 'production') {
-    return next();
-  }
+  if (!REQUIRE_SUBSCRIPTION) return next();
 
   try {
     const result = await db.query(

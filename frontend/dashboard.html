@@ -101,39 +101,43 @@
   initSidebar('dashboard');
   initTopBar('Panel de Control');
 
+  // Feature flag — poner en true para reactivar bloqueos de suscripción
+  const REQUIRE_SUBSCRIPTION = false;
+
   async function loadDashboard() {
     const user    = Auth.getUser();
     const company = Auth.getCompany();
     const subData = await billingApi.status().catch(() => null);
     const status  = subData?.subscription_status || company?.subscription_status || 'inactive';
 
-    // Sub alert
-    const alertEl = document.getElementById('sub-alert-container');
-    if (status === 'inactive') {
-      alertEl.innerHTML = `
-        <div class="sub-alert">
-          <div>
-            <strong>Suscripción inactiva.</strong> Para acceder a todos los módulos necesitas una suscripción activa.
-            <br><button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="startCheckout()">Activar suscripción</button>
-            ${location.hostname === 'localhost' ? '<button class="btn btn-secondary btn-sm" style="margin-top:8px;margin-left:8px" onclick="activateDev()">Activar demo (dev)</button>' : ''}
-          </div>
-        </div>`;
-    } else if (status === 'past_due') {
-      alertEl.innerHTML = `
-        <div class="sub-alert warn">
-          <strong>Pago vencido.</strong> Por favor actualiza tu método de pago para evitar la interrupción del servicio.
-          <button class="btn btn-warning btn-sm" style="margin-left:12px" onclick="openPortal()">Actualizar pago</button>
-        </div>`;
-    }
+    if (REQUIRE_SUBSCRIPTION) {
+      const alertEl = document.getElementById('sub-alert-container');
+      if (status === 'inactive') {
+        alertEl.innerHTML = `
+          <div class="sub-alert">
+            <div>
+              <strong>Suscripción inactiva.</strong> Para acceder a todos los módulos necesitas una suscripción activa.
+              <br><button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="startCheckout()">Activar suscripción</button>
+              ${location.hostname === 'localhost' ? '<button class="btn btn-secondary btn-sm" style="margin-top:8px;margin-left:8px" onclick="activateDev()">Activar demo (dev)</button>' : ''}
+            </div>
+          </div>`;
+      } else if (status === 'past_due') {
+        alertEl.innerHTML = `
+          <div class="sub-alert warn">
+            <strong>Pago vencido.</strong> Por favor actualiza tu método de pago para evitar la interrupción del servicio.
+            <button class="btn btn-warning btn-sm" style="margin-left:12px" onclick="openPortal()">Actualizar pago</button>
+          </div>`;
+      }
 
-    if (status !== 'active') {
-      document.getElementById('processes-container').innerHTML = `
-        <div class="empty-state">
-          <div class="empty-title">Acceso restringido</div>
-          <div class="empty-sub">Activa tu suscripción para ver y gestionar procesos.</div>
-        </div>`;
-      document.getElementById('kpi-processes').textContent = '—';
-      return;
+      if (status !== 'active') {
+        document.getElementById('processes-container').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-title">Acceso restringido</div>
+            <div class="empty-sub">Activa tu suscripción para ver y gestionar procesos.</div>
+          </div>`;
+        document.getElementById('kpi-processes').textContent = '—';
+        return;
+      }
     }
 
     // Cargar resumen

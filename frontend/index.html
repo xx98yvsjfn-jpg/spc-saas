@@ -81,16 +81,18 @@
         <input type="password" id="reg-password" placeholder="••••••••" required minlength="8">
       </div>
       <button type="submit" class="btn btn-primary" style="width:100%" id="btn-register">
-        Crear cuenta y continuar al pago
+        Crear cuenta
       </button>
     </form>
-    <p class="dev-note">Al registrarte serás redirigido a Stripe para activar tu suscripción.</p>
   </div>
 </div>
 
 <script src="/js/config.js"></script>
 <script src="/js/api.js"></script>
 <script>
+  // Feature flag — poner en true para reactivar mensajes y flujo de pago
+  const REQUIRE_SUBSCRIPTION = false;
+
   // Si ya está logueado, redirigir al dashboard
   if (Auth.isLoggedIn()) {
     window.location.href = '/dashboard.html';
@@ -103,14 +105,16 @@
   if (params.get('session') === 'expired') {
     showAlert(msgEl, 'Tu sesión ha expirado. Por favor vuelve a iniciar sesión.', 'warning');
   }
-  if (params.get('checkout') === 'success') {
-    showAlert(msgEl, 'Pago completado. Tu suscripción está siendo activada. Inicia sesión para continuar.', 'success');
-  }
-  if (params.get('checkout') === 'canceled') {
-    showAlert(msgEl, 'El proceso de pago fue cancelado. Puedes intentarlo de nuevo desde el dashboard.', 'warning');
-  }
-  if (params.get('subscription') === 'inactive' || params.get('subscription') === 'past_due') {
-    showAlert(msgEl, 'Tu suscripción está inactiva o vencida. Por favor renueva tu plan para continuar.', 'error');
+  if (REQUIRE_SUBSCRIPTION) {
+    if (params.get('checkout') === 'success') {
+      showAlert(msgEl, 'Pago completado. Tu suscripción está siendo activada. Inicia sesión para continuar.', 'success');
+    }
+    if (params.get('checkout') === 'canceled') {
+      showAlert(msgEl, 'El proceso de pago fue cancelado. Puedes intentarlo de nuevo desde el dashboard.', 'warning');
+    }
+    if (params.get('subscription') === 'inactive' || params.get('subscription') === 'past_due') {
+      showAlert(msgEl, 'Tu suscripción está inactiva o vencida. Por favor renueva tu plan para continuar.', 'error');
+    }
   }
   if (params.get('register') === '1') {
     switchTab('register');
@@ -136,8 +140,7 @@
 
     try {
       const data = await authApi.login(email, pass);
-      if (data.company.subscription_status !== 'active') {
-        // Mostrar nota de modo dev
+      if (REQUIRE_SUBSCRIPTION && data.company.subscription_status !== 'active') {
         document.getElementById('dev-note').style.display = 'block';
       }
       window.location.href = '/dashboard.html';
@@ -168,18 +171,20 @@
 
     try {
       await authApi.register(payload);
-      // Intentar crear sesión de Stripe Checkout
-      try {
-        const checkout = await billingApi.checkout();
-        window.location.href = checkout.url;
-      } catch {
-        // Si Stripe no está configurado (dev), ir al dashboard
+      if (REQUIRE_SUBSCRIPTION) {
+        try {
+          const checkout = await billingApi.checkout();
+          window.location.href = checkout.url;
+        } catch {
+          window.location.href = '/dashboard.html';
+        }
+      } else {
         window.location.href = '/dashboard.html';
       }
     } catch (err) {
       showAlert(msgEl, err.message || 'Error al registrar la empresa.', 'error');
       btn.disabled    = false;
-      btn.textContent = 'Crear cuenta y continuar al pago';
+      btn.textContent = 'Crear cuenta';
     }
   }
 </script>
