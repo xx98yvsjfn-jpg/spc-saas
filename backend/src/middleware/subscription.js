@@ -1,6 +1,11 @@
 const db = require('../db');
 
 async function requireActiveSubscription(req, res, next) {
+  // TODO: reactivar en producción — validación desactivada temporalmente para desarrollo
+  if (process.env.NODE_ENV !== 'production') {
+    return next();
+  }
+
   try {
     const result = await db.query(
       'SELECT subscription_status FROM companies WHERE id = $1',
