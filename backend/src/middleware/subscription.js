@@ -4,7 +4,10 @@ const db = require('../db');
 const REQUIRE_SUBSCRIPTION = false;
 
 async function requireActiveSubscription(req, res, next) {
-  if (!REQUIRE_SUBSCRIPTION) return next();
+  if (!REQUIRE_SUBSCRIPTION) {
+    console.log('Subscription check bypassed');
+    return next();
+  }
 
   try {
     const result = await db.query(
